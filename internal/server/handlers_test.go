@@ -26,6 +26,10 @@ func TestAPIProcess(t *testing.T) {
 			break
 		}
 	}
+	if len(args) == 1 && args[0] == "output" {
+		fmt.Fprint(os.Stdout, strings.Repeat("x", 2<<20))
+		os.Exit(0)
+	}
 	if len(args) == 2 && args[0] == "wait" {
 		if err := os.WriteFile(args[1], []byte("started"), 0600); err != nil {
 			os.Exit(1)
@@ -147,6 +151,13 @@ func TestExecResults(t *testing.T) {
 				t.Fatalf("exec: %d %+v", response.Code, result)
 			}
 		})
+	}
+	body, _ := json.Marshal(map[string]any{
+		"args": []string{"-test.run=^TestAPIProcess$", "--", "output"},
+	})
+	response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), string(body))
+	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), "output exceeds 1 MiB") {
+		t.Fatalf("output overflow: %d %s", response.Code, response.Body.String())
 	}
 }
 
