@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"cli2http/cmd"
+	"github.com/yhotamos/cli2http/cmd"
 )
 
 func main() {

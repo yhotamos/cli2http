@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"cli2http/internal/runner"
+	"github.com/yhotamos/cli2http/internal/runner"
 )
 
 func TestAPIProcess(t *testing.T) {

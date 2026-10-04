@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"cli2http/internal/runner"
+	"github.com/yhotamos/cli2http/internal/runner"
 )
 
 func TestStartupAndShutdown(t *testing.T) {
