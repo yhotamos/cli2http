@@ -6,9 +6,9 @@ import (
 	"errors"
 )
 
-const maxOutputBytes = 1 << 20
+const maxOutputBytes = 10 * 1024 * 1024
 
-var ErrOutputLimit = errors.New("command output exceeds 1 MiB per stream")
+var ErrOutputLimit = errors.New("command output exceeds 10 MiB per stream")
 
 // Each stream has its own buffer and writer goroutine.
 type outputBuffer struct {

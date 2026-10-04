@@ -3,10 +3,13 @@ package server
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime"
 	"net/http"
 	"os"
+
+	"cli2http/internal/runner"
 )
 
 type execResponse struct {
@@ -65,7 +68,11 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.target.Run(r.Context(), args)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		status := http.StatusInternalServerError
+		if errors.Is(err, runner.ErrOutputLimit) {
+			status = http.StatusUnprocessableEntity
+		}
+		writeError(w, status, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, execResponse{

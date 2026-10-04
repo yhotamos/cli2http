@@ -27,7 +27,7 @@ func TestAPIProcess(t *testing.T) {
 		}
 	}
 	if len(args) == 1 && args[0] == "output" {
-		fmt.Fprint(os.Stdout, strings.Repeat("x", 2<<20))
+		fmt.Fprint(os.Stdout, strings.Repeat("x", 11*1024*1024))
 		os.Exit(0)
 	}
 	if len(args) == 2 && args[0] == "wait" {
@@ -156,7 +156,7 @@ func TestExecResults(t *testing.T) {
 		"args": []string{"-test.run=^TestAPIProcess$", "--", "output"},
 	})
 	response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), string(body))
-	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), "output exceeds 1 MiB") {
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "output exceeds 10 MiB") {
 		t.Fatalf("output overflow: %d %s", response.Code, response.Body.String())
 	}
 }
