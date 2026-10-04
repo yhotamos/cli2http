@@ -1,6 +1,6 @@
 # CLI2HTTP
 
-既存 CLI を localhost の HTTP API として公開する、Cobra を使用した CLI です。
+既存 CLI を localhost の HTTP API として公開するツールです。
 指定した CLI を解決し、localhost の空きポートで HTTP サーバを起動します。
 認証 Token は起動ごとに自動生成し、ファイルには保存しません。
 
@@ -38,7 +38,7 @@ go build -o cli2http.exe .
 起動時に表示された Address と Token を使い、別のターミナルから呼び出します。
 例のポート `48321` と `<起動時のToken>` は実際の値に置き換えてください。
 
-### 単独モード：POST /exec
+### POST /exec
 
 `go run . git` で起動したサーバに、Git のバージョン表示を要求する例です。
 
@@ -51,7 +51,7 @@ Content-Type: application/json
 {"args":["--version"]}
 ```
 
-curl から呼び出す場合（bash / zsh）:
+curl の例:
 
 ```bash
 curl -X POST 'http://127.0.0.1:48321/exec' \
