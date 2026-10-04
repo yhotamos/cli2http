@@ -39,13 +39,13 @@ func TestStartupAndShutdown(t *testing.T) {
 	result := make(chan error, 1)
 	go func() { result <- srv.Run(ctx) }()
 	client := &http.Client{Timeout: 3 * time.Second}
-	response, err := client.Get(srv.Address() + "/missing")
+	response, err := client.Get(srv.Address() + "/health")
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if response.StatusCode != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", response.StatusCode)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
 	}
 	cancel()
 	select {

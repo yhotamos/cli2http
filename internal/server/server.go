@@ -31,15 +31,16 @@ func New(target runner.Target) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listen on localhost: %w", err)
 	}
-	return &Server{
+	s := &Server{
 		target:   target,
 		token:    hex.EncodeToString(token[:]),
 		listener: listener,
 		http: &http.Server{
-			Handler:           http.NewServeMux(),
 			ReadHeaderTimeout: 5 * time.Second,
 		},
-	}, nil
+	}
+	s.http.Handler = s.routes()
+	return s, nil
 }
 
 func (s *Server) Command() string { return s.target.Command }
@@ -53,6 +54,7 @@ func (s *Server) Close() error {
 
 // Run serves HTTP until cancellation, then waits for graceful shutdown.
 func (s *Server) Run(ctx context.Context) error {
+	s.http.BaseContext = func(net.Listener) context.Context { return ctx }
 	done := make(chan struct{})
 	shutdownDone := make(chan struct{})
 	go func() {

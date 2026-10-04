@@ -39,7 +39,7 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer srv.Close()
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "cli2http\n\nCommand : %s\nAddress : %s\nToken   : %s\n\nPOST /exec\n", srv.Command(), srv.Address(), srv.Token()); err != nil {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Command : %s\nAddress : %s\nToken   : %s\n\nPOST /exec\n", srv.Command(), srv.Address(), srv.Token()); err != nil {
 		return err
 	}
 	return srv.Run(cmd.Context())
