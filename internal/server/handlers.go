@@ -9,6 +9,12 @@ import (
 	"os"
 )
 
+type execResponse struct {
+	ExitCode int    `json:"exitCode"`
+	Stdout   string `json:"stdout"`
+	Stderr   string `json:"stderr"`
+}
+
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /exec", s.authenticate(s.handleExec))
@@ -62,7 +68,11 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusOK, execResponse{
+		ExitCode: result.ExitCode,
+		Stdout:   result.Stdout,
+		Stderr:   result.Stderr,
+	})
 }
 
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {

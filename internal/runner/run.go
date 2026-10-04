@@ -10,9 +10,9 @@ import (
 
 // Result contains the completed CLI process output.
 type Result struct {
-	ExitCode int    `json:"exitCode"`
-	Stdout   string `json:"stdout"`
-	Stderr   string `json:"stderr"`
+	ExitCode int
+	Stdout   string
+	Stderr   string
 }
 
 // Run executes the resolved target directly, without invoking a shell.

@@ -135,12 +135,15 @@ func TestExecResults(t *testing.T) {
 			args := append([]string{"-test.run=^TestAPIProcess$", "--"}, test.args...)
 			body, _ := json.Marshal(map[string]any{"args": args})
 			response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), string(body))
-			var result runner.Result
+			var result map[string]any
 			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 				t.Fatal(err)
 			}
 			want, _ := json.Marshal(test.args)
-			if response.Code != http.StatusOK || result.ExitCode != test.code || result.Stdout != string(want)+"\n" || result.Stderr != "stderr" {
+			if response.Code != http.StatusOK || len(result) != 3 || result["exitCode"] != float64(test.code) {
+				t.Fatalf("exec: %d %+v", response.Code, result)
+			}
+			if result["stdout"] != string(want)+"\n" || result["stderr"] != "stderr" {
 				t.Fatalf("exec: %d %+v", response.Code, result)
 			}
 		})
