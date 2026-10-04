@@ -78,8 +78,8 @@ func TestResolveSymlink(t *testing.T) {
 					}
 					continue
 				}
-				if err != nil || target.Command != command || target.Executable != executable {
-					t.Fatalf("target = %+v, error = %v, want %q", target, err, executable)
+				if err != nil || target.Command != command || target.Executable != link {
+					t.Fatalf("target = %+v, error = %v, want %q", target, err, link)
 				}
 			}
 		})

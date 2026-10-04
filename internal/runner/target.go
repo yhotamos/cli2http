@@ -52,7 +52,7 @@ func Resolve(command string) (Target, error) {
 	if err := rejectShell(resolved); err != nil {
 		return Target{}, err
 	}
-	return Target{Command: command, Executable: resolved}, nil
+	return Target{Command: command, Executable: executable}, nil
 }
 
 func rejectShell(command string) error {
