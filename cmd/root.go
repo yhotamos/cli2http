@@ -5,12 +5,17 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
 
-	"cli2http/internal/runner"
-	"cli2http/internal/server"
+	"github.com/yhotamos/cli2http/internal/runner"
+	"github.com/yhotamos/cli2http/internal/server"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/mod/module"
+	"golang.org/x/mod/semver"
 )
+
+var version = "dev"
 
 func newRootCommand() *cobra.Command {
 	return &cobra.Command{
@@ -18,6 +23,7 @@ func newRootCommand() *cobra.Command {
 		Short:        "A lightweight CLI-to-HTTP bridge",
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
+		Version:      buildVersion(),
 		RunE:         runRoot,
 	}
 }
@@ -43,4 +49,15 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	return srv.Run(cmd.Context())
+}
+
+func buildVersion() string {
+	if version != "dev" {
+		return version
+	}
+	info, ok := debug.ReadBuildInfo()
+	if ok && semver.IsValid(info.Main.Version) && !module.IsPseudoVersion(info.Main.Version) {
+		return info.Main.Version
+	}
+	return version
 }

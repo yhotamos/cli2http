@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"os"
 
-	"cli2http/internal/runner"
+	"github.com/yhotamos/cli2http/internal/runner"
 )
 
 type execResponse struct {

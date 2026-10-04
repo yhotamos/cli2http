@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"cli2http/internal/runner"
+	"github.com/yhotamos/cli2http/internal/runner"
 )
 
 // Server owns the listener and the startup information for one target CLI.
