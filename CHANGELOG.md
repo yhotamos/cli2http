@@ -1,0 +1,12 @@
+# Changelog
+
+## [0.1.0] - 2026-10-04
+
+### Added
+
+- HTTP API for running an existing CLI with `cli2http <command>`
+- Token authentication for command execution and server information
+- Exit code, stdout, and stderr in execution responses
+- Installation with `go install` and version display with `--version`
+
+[0.1.0]: https://github.com/yhotamos/cli2http/releases/tag/v0.1.0
