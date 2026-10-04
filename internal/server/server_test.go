@@ -12,7 +12,7 @@ import (
 )
 
 func TestStartupAndShutdown(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"})
+	srv, err := Listen(runner.Target{Command: "example"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	if err != nil || len(token) != 32 {
 		t.Fatalf("unexpected token format")
 	}
-	other, err := Listen(runner.Target{Command: "other"})
+	other, err := Listen(runner.Target{Command: "other"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestStartupAndShutdown(t *testing.T) {
 }
 
 func TestCloseBeforeRun(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"})
+	srv, err := Listen(runner.Target{Command: "example"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestCloseBeforeRun(t *testing.T) {
 }
 
 func TestCloseWhileServing(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"})
+	srv, err := Listen(runner.Target{Command: "example"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,5 +139,19 @@ func TestCloseWhileServing(t *testing.T) {
 		}
 	case <-time.After(4 * time.Second):
 		t.Fatal("connection remained open after Close")
+	}
+}
+
+func TestListenPortInUse(t *testing.T) {
+	srv, err := Listen(runner.Target{Command: "example"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	port := srv.listener.Addr().(*net.TCPAddr).Port
+	other, err := Listen(runner.Target{Command: "example"}, port)
+	if err == nil {
+		other.Close()
+		t.Fatal("expected an error for a port already in use")
 	}
 }

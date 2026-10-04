@@ -3,9 +3,11 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -17,18 +19,38 @@ func TestStartupOutput(t *testing.T) {
 	}
 	t.Setenv("PATH", filepath.Dir(executable))
 	name := filepath.Base(executable)
-	command := newRootCommand()
-	var output bytes.Buffer
-	command.SetOut(&output)
-	command.SetArgs([]string{name})
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := command.ExecuteContext(ctx); err != nil {
+	reservation, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
 		t.Fatal(err)
 	}
-	want := `^Command : ` + regexp.QuoteMeta(name) + `\nAddress : http://127\.0\.0\.1:[1-9][0-9]*\nToken   : [0-9a-f]{64}\n\nPOST /exec\n$`
-	if !regexp.MustCompile(want).MatchString(output.String()) {
-		t.Fatalf("unexpected startup output: %q", output.String())
+	port := strconv.Itoa(reservation.Addr().(*net.TCPAddr).Port)
+	if err := reservation.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name     string
+		args     []string
+		wantPort string
+	}{
+		{"default", []string{name}, `[1-9][0-9]*`},
+		{"automatic", []string{"--port", "0", name}, `[1-9][0-9]*`},
+		{"specified", []string{"--port", port, name}, port},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := newRootCommand()
+			var output bytes.Buffer
+			command.SetOut(&output)
+			command.SetArgs(test.args)
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			if err := command.ExecuteContext(ctx); err != nil {
+				t.Fatal(err)
+			}
+			want := `^Command : ` + regexp.QuoteMeta(name) + `\nAddress : http://127\.0\.0\.1:` + test.wantPort + `\nToken   : [0-9a-f]{64}\n\nPOST /exec\n$`
+			if !regexp.MustCompile(want).MatchString(output.String()) {
+				t.Fatalf("unexpected startup output: %q", output.String())
+			}
+		})
 	}
 }
 
@@ -59,5 +81,27 @@ func TestShellRejectedBeforeStartup(t *testing.T) {
 	}
 	if output.Len() != 0 {
 		t.Fatalf("unexpected startup output: %q", output.String())
+	}
+}
+
+func TestInvalidPort(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, port := range []string{"-1", "65536", "not-a-number"} {
+		t.Run(port, func(t *testing.T) {
+			command := newRootCommand()
+			var output bytes.Buffer
+			command.SetOut(&output)
+			command.SetErr(&bytes.Buffer{})
+			command.SetArgs([]string{"--port", port, executable})
+			if err := command.Execute(); err == nil {
+				t.Fatal("expected an error for an invalid port")
+			}
+			if output.Len() != 0 {
+				t.Fatalf("unexpected startup output: %q", output.String())
+			}
+		})
 	}
 }

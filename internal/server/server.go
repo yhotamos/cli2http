@@ -21,13 +21,17 @@ type Server struct {
 	http     *http.Server
 }
 
-// Listen reserves an available loopback port and creates a fresh token.
-func Listen(target runner.Target) (*Server, error) {
+// Listen reserves a loopback port and creates a fresh token.
+// Port 0 selects an available port.
+func Listen(target runner.Target, port int) (*Server, error) {
+	if port < 0 || port > 65535 {
+		return nil, fmt.Errorf("invalid port %d: must be between 0 and 65535", port)
+	}
 	var token [32]byte
 	if _, err := rand.Read(token[:]); err != nil {
 		return nil, fmt.Errorf("generate authentication token: %w", err)
 	}
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	listener, err := net.Listen("tcp4", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		return nil, fmt.Errorf("listen on localhost: %w", err)
 	}
