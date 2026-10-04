@@ -21,8 +21,8 @@ type Server struct {
 	http     *http.Server
 }
 
-// New reserves an available loopback port and creates a fresh token.
-func New(target runner.Target) (*Server, error) {
+// Listen reserves an available loopback port and creates a fresh token.
+func Listen(target runner.Target) (*Server, error) {
 	var token [32]byte
 	if _, err := rand.Read(token[:]); err != nil {
 		return nil, fmt.Errorf("generate authentication token: %w", err)
@@ -44,12 +44,21 @@ func New(target runner.Target) (*Server, error) {
 }
 
 func (s *Server) Command() string { return s.target.Command }
-func (s *Server) Address() string { return "http://" + s.listener.Addr().String() }
+func (s *Server) URL() string     { return "http://" + s.listener.Addr().String() }
 func (s *Server) Token() string   { return s.token }
 
-// Close releases the listener, including when startup output fails.
+// Close stops HTTP connections and releases the listener, even before Run.
+// It is safe to call more than once. Closed connections cancel their requests.
 func (s *Server) Close() error {
-	return s.listener.Close()
+	err := s.http.Close()
+	listenerErr := s.listener.Close()
+	if err != nil {
+		return err
+	}
+	if errors.Is(listenerErr, net.ErrClosed) {
+		return nil
+	}
+	return listenerErr
 }
 
 // Run serves HTTP until cancellation, then waits for graceful shutdown.
