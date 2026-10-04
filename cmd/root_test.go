@@ -46,3 +46,18 @@ func TestInvalidCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestShellRejectedBeforeStartup(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	command := newRootCommand()
+	var output bytes.Buffer
+	command.SetOut(&output)
+	command.SetErr(&bytes.Buffer{})
+	command.SetArgs([]string{"pwsh"})
+	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "shell command") {
+		t.Fatalf("error = %v, want shell rejection", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("unexpected startup output: %q", output.String())
+	}
+}
