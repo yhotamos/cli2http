@@ -61,7 +61,7 @@ func (s *Server) Close() error {
 	return listenerErr
 }
 
-// Run serves HTTP until cancellation, then waits for graceful shutdown.
+// Run serves HTTP until cancellation, then waits for request cleanup.
 func (s *Server) Run(ctx context.Context) error {
 	s.http.BaseContext = func(net.Listener) context.Context { return ctx }
 	done := make(chan struct{})
@@ -73,7 +73,7 @@ func (s *Server) Run(ctx context.Context) error {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := s.http.Shutdown(shutdownCtx); err != nil {
-				_ = s.http.Close()
+				_ = s.Close()
 			}
 		case <-done:
 		}

@@ -1,13 +1,16 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"cli2http/internal/runner"
 )
@@ -22,6 +25,12 @@ func TestAPIProcess(t *testing.T) {
 			args = os.Args[i+1:]
 			break
 		}
+	}
+	if len(args) == 2 && args[0] == "wait" {
+		if err := os.WriteFile(args[1], []byte("started"), 0600); err != nil {
+			os.Exit(1)
+		}
+		time.Sleep(30 * time.Second)
 	}
 	_ = json.NewEncoder(os.Stdout).Encode(args)
 	fmt.Fprint(os.Stderr, "stderr")
@@ -163,5 +172,88 @@ func TestInvalidExecRequest(t *testing.T) {
 	response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), `{"args":[]}`)
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("startup failure: %d", response.Code)
+	}
+}
+
+func TestCancellationWaitsForExecution(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLI2HTTP_API_PROCESS", "1")
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+
+	executionDone := make(chan struct{})
+	handler := srv.http.Handler
+	srv.http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(w, r)
+		close(executionDone)
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	serverResult := make(chan error, 1)
+	go func() { serverResult <- srv.Run(ctx) }()
+
+	marker := filepath.Join(t.TempDir(), "started")
+	body, err := json.Marshal(map[string]any{
+		"args": []string{"-test.run=^TestAPIProcess$", "--", "wait", marker},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequest(http.MethodPost, srv.URL()+"/exec", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+srv.Token())
+	requestResult := make(chan error, 1)
+	go func() {
+		client := &http.Client{Timeout: 7 * time.Second}
+		response, err := client.Do(request)
+		if err == nil {
+			response.Body.Close()
+			if response.StatusCode != http.StatusInternalServerError {
+				err = fmt.Errorf("canceled execution status: %d", response.StatusCode)
+			}
+		}
+		requestResult <- err
+	}()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("CLI did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-serverResult:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(7 * time.Second):
+		t.Fatal("server did not stop after cancellation")
+	}
+	select {
+	case <-executionDone:
+	default:
+		t.Fatal("Run returned before execution cleanup completed")
+	}
+	select {
+	case err := <-requestResult:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("execution response did not finish")
 	}
 }
