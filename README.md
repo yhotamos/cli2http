@@ -23,14 +23,12 @@ cli2http magick
 
 ポートを固定する場合は `cli2http --port 8080 magick` を使います。未指定または `--port 0` は自動割り当てです。
 
-起動すると Address と Token が表示されます（以下は例です）。
+起動すると URL と Token が表示されます（以下は例です）。
 
 ```text
 Command : magick
-Address : http://127.0.0.1:48321
+URL     : http://127.0.0.1:48321
 Token   : 4e3360d0...
-
-POST /exec
 ```
 
 別のターミナルから `input.jpg` を 800×600 にリサイズして `output.jpg` として保存します。URL と `<Token>` は、表示された実際の値に置き換えてください。
@@ -58,7 +56,7 @@ curl -X POST 'http://127.0.0.1:48321/exec' \
 `cmd`・`powershell`・`pwsh`・`sh`・`bash` など主要なシェルは指定できません。対象 CLI の機能や権限を制限するものではありません。
 
 CLI の非ゼロ終了も HTTP 200 で返します。成否は `exitCode` で確認してください。
-サーバの終了は Ctrl+C です。再起動すると Token が変わります。ポートが自動割り当ての場合は Address も変わります。
+サーバの終了は Ctrl+C です。再起動すると Token が変わります。ポートが自動割り当ての場合は URL も変わります。
 
 ## API
 
