@@ -46,7 +46,7 @@ func TestStartupOutput(t *testing.T) {
 			if err := command.ExecuteContext(ctx); err != nil {
 				t.Fatal(err)
 			}
-			want := `^Command : ` + regexp.QuoteMeta(name) + `\nAddress : http://127\.0\.0\.1:` + test.wantPort + `\nToken   : [0-9a-f]{64}\n\nPOST /exec\n$`
+			want := `^Command : ` + regexp.QuoteMeta(name) + `\nAddress : http://127\.0\.0\.1:` + test.wantPort + `\nToken   : [0-9a-f]{64}\n$`
 			if !regexp.MustCompile(want).MatchString(output.String()) {
 				t.Fatalf("unexpected startup output: %q", output.String())
 			}

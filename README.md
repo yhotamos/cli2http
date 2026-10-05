@@ -29,8 +29,6 @@ cli2http magick
 Command : magick
 Address : http://127.0.0.1:48321
 Token   : 4e3360d0...
-
-POST /exec
 ```
 
 別のターミナルから `input.jpg` を 800×600 にリサイズして `output.jpg` として保存します。URL と `<Token>` は、表示された実際の値に置き換えてください。
