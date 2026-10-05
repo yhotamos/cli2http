@@ -18,7 +18,7 @@ import (
 var version = "dev"
 
 func newRootCommand() *cobra.Command {
-	return &cobra.Command{
+	command := &cobra.Command{
 		Use:          "cli2http <command>",
 		Short:        "A lightweight CLI-to-HTTP bridge",
 		Args:         cobra.ExactArgs(1),
@@ -26,6 +26,8 @@ func newRootCommand() *cobra.Command {
 		Version:      buildVersion(),
 		RunE:         runRoot,
 	}
+	command.Flags().Int("port", 0, "Port to listen on (0 selects an available port)")
+	return command
 }
 
 // Execute runs the CLI until completion or an interrupt.
@@ -40,7 +42,11 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	srv, err := server.Listen(target)
+	port, err := cmd.Flags().GetInt("port")
+	if err != nil {
+		return err
+	}
+	srv, err := server.Listen(target, port)
 	if err != nil {
 		return err
 	}

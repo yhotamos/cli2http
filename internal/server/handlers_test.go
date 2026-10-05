@@ -56,7 +56,7 @@ func requestAPI(srv *Server, method, path, token, body string) *httptest.Respons
 }
 
 func TestHealthInfoAndAuthentication(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"})
+	srv, err := Listen(runner.Target{Command: "example"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestExecResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable})
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestExecResults(t *testing.T) {
 }
 
 func TestInvalidExecRequest(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "missing", Executable: "cli2http-missing-command-5c3497"})
+	srv, err := Listen(runner.Target{Command: "missing", Executable: "cli2http-missing-command-5c3497"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestCancellationWaitsForExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable})
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
