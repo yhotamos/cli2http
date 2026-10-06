@@ -13,10 +13,7 @@ import (
 )
 
 func TestStartupOutput(t *testing.T) {
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
+	executable := writeTargetFixture(t)
 	t.Setenv("PATH", filepath.Dir(executable))
 	name := filepath.Base(executable)
 	reservation, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -69,26 +66,38 @@ func TestInvalidCommand(t *testing.T) {
 	}
 }
 
-func TestShellRejectedBeforeStartup(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
-	command := newRootCommand()
-	var output bytes.Buffer
-	command.SetOut(&output)
-	command.SetErr(&bytes.Buffer{})
-	command.SetArgs([]string{"pwsh"})
-	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "shell command") {
-		t.Fatalf("error = %v, want shell rejection", err)
-	}
-	if output.Len() != 0 {
-		t.Fatalf("unexpected startup output: %q", output.String())
-	}
-}
-
-func TestInvalidPort(t *testing.T) {
+func TestRejectedCommandBeforeStartup(t *testing.T) {
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("PATH", t.TempDir())
+	for _, test := range []struct {
+		command string
+		message string
+	}{
+		{"pwsh", "shell command"},
+		{"cli2http", "cli2http command"},
+		{executable, "cli2http command"},
+	} {
+		t.Run(test.command, func(t *testing.T) {
+			command := newRootCommand()
+			var output bytes.Buffer
+			command.SetOut(&output)
+			command.SetErr(&bytes.Buffer{})
+			command.SetArgs([]string{test.command})
+			if err := command.Execute(); err == nil || !strings.Contains(err.Error(), test.message) {
+				t.Fatalf("error = %v, want %s rejection", err, test.message)
+			}
+			if output.Len() != 0 {
+				t.Fatalf("unexpected startup output: %q", output.String())
+			}
+		})
+	}
+}
+
+func TestInvalidPort(t *testing.T) {
+	executable := writeTargetFixture(t)
 	for _, port := range []string{"-1", "65536", "not-a-number"} {
 		t.Run(port, func(t *testing.T) {
 			command := newRootCommand()
@@ -104,4 +113,13 @@ func TestInvalidPort(t *testing.T) {
 			}
 		})
 	}
+}
+
+func writeTargetFixture(t *testing.T) string {
+	t.Helper()
+	executable := filepath.Join(t.TempDir(), "tool.exe")
+	if err := os.WriteFile(executable, []byte("fixture"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	return executable
 }
