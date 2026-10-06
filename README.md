@@ -53,7 +53,7 @@ curl -X POST 'http://127.0.0.1:48321/exec' \
 起動したディレクトリに `output.jpg` が作成されます。
 
 ほかの CLI も `cli2http <command>` で公開できます。
-`cmd`・`powershell`・`pwsh`・`sh`・`bash` など主要なシェルは指定できません。対象 CLI の機能や権限を制限するものではありません。
+`cmd`・`powershell`・`pwsh`・`sh`・`bash` など主要なシェルと `cli2http` 自身は指定できません。対象 CLI の機能や権限を制限するものではありません。
 
 CLI の非ゼロ終了も HTTP 200 で返します。成否は `exitCode` で確認してください。
 サーバの終了は Ctrl+C です。再起動すると Token が変わります。ポートが自動割り当ての場合は URL も変わります。
