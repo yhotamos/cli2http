@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 )
 
 func TestStartupAndShutdown(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0)
+	srv, err := Listen(runner.Target{Command: "example"}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +26,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	if err != nil || len(token) != 32 {
 		t.Fatalf("unexpected token format")
 	}
-	other, err := Listen(runner.Target{Command: "other"}, 0)
+	other, err := Listen(runner.Target{Command: "other"}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +65,7 @@ func TestStartupAndShutdown(t *testing.T) {
 }
 
 func TestCloseBeforeRun(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0)
+	srv, err := Listen(runner.Target{Command: "example"}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +87,7 @@ func TestCloseBeforeRun(t *testing.T) {
 }
 
 func TestCloseWhileServing(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0)
+	srv, err := Listen(runner.Target{Command: "example"}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,15 +144,58 @@ func TestCloseWhileServing(t *testing.T) {
 }
 
 func TestListenPortInUse(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0)
+	srv, err := Listen(runner.Target{Command: "example"}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer srv.Close()
 	port := srv.listener.Addr().(*net.TCPAddr).Port
-	other, err := Listen(runner.Target{Command: "example"}, port)
+	other, err := Listen(runner.Target{Command: "example"}, port, "")
 	if err == nil {
 		other.Close()
 		t.Fatal("expected an error for a port already in use")
+	}
+}
+
+func TestListenFixedToken(t *testing.T) {
+	for _, token := range []string{"Abcdef01234567-_", strings.Repeat("a", 17)} {
+		t.Run(token, func(t *testing.T) {
+			for range 2 {
+				srv, err := Listen(runner.Target{Command: "example"}, 0, token)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if srv.Token() != token {
+					t.Errorf("specified token was not preserved")
+				}
+				if err := srv.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestListenInvalidToken(t *testing.T) {
+	for _, token := range []string{
+		strings.Repeat("a", 15),
+		strings.Repeat("a", 15) + " ",
+		strings.Repeat("a", 15) + "!",
+		strings.Repeat("a", 15) + "\n",
+		strings.Repeat("a", 15) + "あ",
+	} {
+		t.Run(token, func(t *testing.T) {
+			srv, err := Listen(runner.Target{Command: "example"}, 0, token)
+			if srv != nil {
+				srv.Close()
+				t.Fatal("invalid token started a server")
+			}
+			if err == nil || !strings.Contains(err.Error(), "invalid token") {
+				t.Fatalf("error = %v, want token rejection", err)
+			}
+			if strings.Contains(err.Error(), token) {
+				t.Fatal("error contains the supplied token")
+			}
+		})
 	}
 }

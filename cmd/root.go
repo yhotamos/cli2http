@@ -27,6 +27,7 @@ func newRootCommand() *cobra.Command {
 		RunE:         runRoot,
 	}
 	command.Flags().Int("port", 0, "Port to listen on (0 selects an available port)")
+	command.Flags().String("token", "", "Authentication token (at least 16 characters; ASCII letters, digits, - and _)")
 	return command
 }
 
@@ -46,7 +47,14 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	srv, err := server.Listen(target, port)
+	token, err := cmd.Flags().GetString("token")
+	if err != nil {
+		return err
+	}
+	if cmd.Flags().Changed("token") && token == "" {
+		return fmt.Errorf("invalid token: must not be empty")
+	}
+	srv, err := server.Listen(target, port, token)
 	if err != nil {
 		return err
 	}
