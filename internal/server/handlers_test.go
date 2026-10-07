@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -210,7 +211,7 @@ func TestCancellationWaitsForExecution(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	serverResult := make(chan error, 1)
-	go func() { serverResult <- srv.Run(ctx) }()
+	go func() { serverResult <- srv.Run(ctx, io.Discard) }()
 
 	marker := filepath.Join(t.TempDir(), "started")
 	body, err := json.Marshal(map[string]any{

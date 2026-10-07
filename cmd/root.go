@@ -62,7 +62,7 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Command : %s\nURL     : %s\nToken   : %s\n", srv.Command(), srv.URL(), srv.Token()); err != nil {
 		return err
 	}
-	return srv.Run(cmd.Context())
+	return srv.Run(cmd.Context(), cmd.OutOrStdout())
 }
 
 func buildVersion() string {

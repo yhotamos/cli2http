@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"time"
 
+	"github.com/yhotamos/cli2http/internal/accesslog"
 	"github.com/yhotamos/cli2http/internal/runner"
 )
 
@@ -89,8 +91,9 @@ func (s *Server) Close() error {
 	return listenerErr
 }
 
-// Run serves HTTP until cancellation, then waits for request cleanup.
-func (s *Server) Run(ctx context.Context) error {
+// Run serves HTTP with access logging until cancellation, then waits for request cleanup.
+func (s *Server) Run(ctx context.Context, output io.Writer) error {
+	s.http.Handler = accesslog.Wrap(s.http.Handler, output)
 	s.http.BaseContext = func(net.Listener) context.Context { return ctx }
 	done := make(chan struct{})
 	shutdownDone := make(chan struct{})
