@@ -13,6 +13,8 @@ import (
 	"github.com/yhotamos/cli2http/internal/runner"
 )
 
+const minTokenLength = 16
+
 // Server owns the listener and the startup information for one target CLI.
 type Server struct {
 	target   runner.Target
@@ -21,15 +23,20 @@ type Server struct {
 	http     *http.Server
 }
 
-// Listen reserves a loopback port and creates a fresh token.
-// Port 0 selects an available port.
-func Listen(target runner.Target, port int) (*Server, error) {
+// Listen reserves a loopback port and uses the specified token.
+// An empty token generates a fresh token. Port 0 selects an available port.
+func Listen(target runner.Target, port int, token string) (*Server, error) {
 	if port < 0 || port > 65535 {
 		return nil, fmt.Errorf("invalid port %d: must be between 0 and 65535", port)
 	}
-	var token [32]byte
-	if _, err := rand.Read(token[:]); err != nil {
-		return nil, fmt.Errorf("generate authentication token: %w", err)
+	if token == "" {
+		var randomToken [32]byte
+		if _, err := rand.Read(randomToken[:]); err != nil {
+			return nil, fmt.Errorf("generate authentication token: %w", err)
+		}
+		token = hex.EncodeToString(randomToken[:])
+	} else if err := validateToken(token); err != nil {
+		return nil, err
 	}
 	listener, err := net.Listen("tcp4", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
@@ -37,7 +44,7 @@ func Listen(target runner.Target, port int) (*Server, error) {
 	}
 	s := &Server{
 		target:   target,
-		token:    hex.EncodeToString(token[:]),
+		token:    token,
 		listener: listener,
 		http: &http.Server{
 			ReadHeaderTimeout: 5 * time.Second,
@@ -45,6 +52,23 @@ func Listen(target runner.Target, port int) (*Server, error) {
 	}
 	s.http.Handler = s.routes()
 	return s, nil
+}
+
+func validateToken(token string) error {
+	if len(token) < minTokenLength {
+		return fmt.Errorf("invalid token: must contain at least %d characters", minTokenLength)
+	}
+	for _, character := range token {
+		switch {
+		case character >= 'a' && character <= 'z':
+		case character >= 'A' && character <= 'Z':
+		case character >= '0' && character <= '9':
+		case character == '-' || character == '_':
+		default:
+			return errors.New("invalid token: only ASCII letters, digits, - and _ are allowed")
+		}
+	}
+	return nil
 }
 
 func (s *Server) Command() string { return s.target.Command }

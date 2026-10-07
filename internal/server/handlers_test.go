@@ -56,7 +56,7 @@ func requestAPI(srv *Server, method, path, token, body string) *httptest.Respons
 }
 
 func TestHealthInfoAndAuthentication(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0)
+	srv, err := Listen(runner.Target{Command: "example"}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestExecResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0)
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestExecResults(t *testing.T) {
 }
 
 func TestInvalidExecRequest(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "missing", Executable: "cli2http-missing-command-5c3497"}, 0)
+	srv, err := Listen(runner.Target{Command: "missing", Executable: "cli2http-missing-command-5c3497"}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestCancellationWaitsForExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0)
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,5 +269,34 @@ func TestCancellationWaitsForExecution(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("execution response did not finish")
+	}
+}
+
+func TestFixedTokenAuthentication(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLI2HTTP_API_PROCESS", "1")
+	const token = "Abcdef01234567-_"
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	for _, endpoint := range []struct{ method, path string }{
+		{http.MethodGet, "/info"},
+		{http.MethodPost, "/exec"},
+	} {
+		for _, supplied := range []string{token, "wrong-token", ""} {
+			want := http.StatusUnauthorized
+			if supplied == token {
+				want = http.StatusOK
+			}
+			response := requestAPI(srv, endpoint.method, endpoint.path, supplied, `{"args":[]}`)
+			if response.Code != want {
+				t.Fatalf("%s status = %d, want %d", endpoint.path, response.Code, want)
+			}
+		}
 	}
 }

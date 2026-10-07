@@ -20,18 +20,22 @@ func TestStartupOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	const fixedToken = "Abcdef01234567-_"
 	port := strconv.Itoa(reservation.Addr().(*net.TCPAddr).Port)
 	if err := reservation.Close(); err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
-		name     string
-		args     []string
-		wantPort string
+		name      string
+		args      []string
+		wantPort  string
+		wantToken string
 	}{
-		{"default", []string{name}, `[1-9][0-9]*`},
-		{"automatic", []string{"--port", "0", name}, `[1-9][0-9]*`},
-		{"specified", []string{"--port", port, name}, port},
+		{"default", []string{name}, `[1-9][0-9]*`, `[0-9a-f]{64}`},
+		{"automatic", []string{"--port", "0", name}, `[1-9][0-9]*`, `[0-9a-f]{64}`},
+		{"specified", []string{"--port", port, name}, port, `[0-9a-f]{64}`},
+		{"fixed token", []string{"--token", fixedToken, name}, `[1-9][0-9]*`, regexp.QuoteMeta(fixedToken)},
+		{"fixed token equals", []string{"--token=" + fixedToken, name}, `[1-9][0-9]*`, regexp.QuoteMeta(fixedToken)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			command := newRootCommand()
@@ -43,7 +47,7 @@ func TestStartupOutput(t *testing.T) {
 			if err := command.ExecuteContext(ctx); err != nil {
 				t.Fatal(err)
 			}
-			want := `^Command : ` + regexp.QuoteMeta(name) + `\nURL     : http://127\.0\.0\.1:` + test.wantPort + `\nToken   : [0-9a-f]{64}\n$`
+			want := `^Command : ` + regexp.QuoteMeta(name) + `\nURL     : http://127\.0\.0\.1:` + test.wantPort + `\nToken   : ` + test.wantToken + `\n$`
 			if !regexp.MustCompile(want).MatchString(output.String()) {
 				t.Fatalf("unexpected startup output: %q", output.String())
 			}
@@ -122,4 +126,31 @@ func writeTargetFixture(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return executable
+}
+
+func TestInvalidToken(t *testing.T) {
+	executable := writeTargetFixture(t)
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{"missing", []string{executable, "--token"}},
+		{"empty", []string{"--token=", executable}},
+		{"short", []string{"--token", strings.Repeat("a", 15), executable}},
+		{"invalid character", []string{"--token", strings.Repeat("a", 15) + "!", executable}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := newRootCommand()
+			var output bytes.Buffer
+			command.SetOut(&output)
+			command.SetErr(&bytes.Buffer{})
+			command.SetArgs(test.args)
+			if err := command.Execute(); err == nil {
+				t.Fatal("expected an error for an invalid token")
+			}
+			if output.Len() != 0 {
+				t.Fatalf("unexpected startup output: %q", output.String())
+			}
+		})
+	}
 }
