@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -38,7 +41,8 @@ func TestStartupAndShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	result := make(chan error, 1)
-	go func() { result <- srv.Run(ctx) }()
+	var output bytes.Buffer
+	go func() { result <- srv.Run(ctx, &output) }()
 	client := &http.Client{Timeout: 3 * time.Second}
 	response, err := client.Get(srv.URL() + "/health")
 	if err != nil {
@@ -48,6 +52,27 @@ func TestStartupAndShutdown(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", response.StatusCode)
 	}
+	for _, request := range []struct {
+		method, path string
+		status       int
+	}{
+		{http.MethodGet, "/info", http.StatusUnauthorized},
+		{http.MethodGet, "/missing", http.StatusNotFound},
+		{http.MethodPost, "/health", http.StatusMethodNotAllowed},
+	} {
+		req, err := http.NewRequest(request.method, srv.URL()+request.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != request.status {
+			t.Fatalf("%s: status = %d, want %d", request.path, response.StatusCode, request.status)
+		}
+	}
 	cancel()
 	select {
 	case err := <-result:
@@ -56,6 +81,14 @@ func TestStartupAndShutdown(t *testing.T) {
 		}
 	case <-time.After(7 * time.Second):
 		t.Fatal("server did not stop after cancellation")
+	}
+	wantLogs := `^GET /health 200 in [0-9]+ms
+GET /info 401 in [0-9]+ms
+GET /missing 404 in [0-9]+ms
+POST /health 405 in [0-9]+ms
+$`
+	if !regexp.MustCompile(wantLogs).MatchString(output.String()) {
+		t.Fatalf("unexpected access logs: %q", output.String())
 	}
 	connection, err := net.DialTimeout("tcp", address.String(), time.Second)
 	if err == nil {
@@ -81,7 +114,7 @@ func TestCloseBeforeRun(t *testing.T) {
 		connection.Close()
 		t.Fatal("listener remained open after Close")
 	}
-	if err := srv.Run(context.Background()); err != nil {
+	if err := srv.Run(context.Background(), io.Discard); err != nil {
 		t.Fatalf("Run after Close: %v", err)
 	}
 }
@@ -100,7 +133,7 @@ func TestCloseWhileServing(t *testing.T) {
 		close(finished)
 	})
 	serverResult := make(chan error, 1)
-	go func() { serverResult <- srv.Run(context.Background()) }()
+	go func() { serverResult <- srv.Run(context.Background(), io.Discard) }()
 	requestResult := make(chan error, 1)
 	go func() {
 		client := &http.Client{Timeout: 3 * time.Second}
