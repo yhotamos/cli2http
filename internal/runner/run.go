@@ -20,7 +20,10 @@ type Result struct {
 func (t Target) Run(ctx context.Context, args []string) (Result, error) {
 	executionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cmd := exec.CommandContext(executionCtx, t.Executable, args...)
+	commandArgs := make([]string, 0, len(t.FixedArgs)+len(args))
+	commandArgs = append(commandArgs, t.FixedArgs...)
+	commandArgs = append(commandArgs, args...)
+	cmd := exec.CommandContext(executionCtx, t.Executable, commandArgs...)
 	cmd.WaitDelay = time.Second
 	stdout := outputBuffer{cancel: cancel}
 	stderr := outputBuffer{cancel: cancel}

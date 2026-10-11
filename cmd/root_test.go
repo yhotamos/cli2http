@@ -7,9 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestStartupOutput(t *testing.T) {
@@ -56,7 +59,7 @@ func TestStartupOutput(t *testing.T) {
 }
 
 func TestInvalidCommand(t *testing.T) {
-	for _, args := range [][]string{nil, {"one", "two"}, {"cli2http-missing-command-5c3497"}} {
+	for _, args := range [][]string{nil, {"--"}, {"cli2http-missing-command-5c3497"}} {
 		t.Run(strings.Join(args, ","), func(t *testing.T) {
 			command := newRootCommand()
 			var output bytes.Buffer
@@ -134,7 +137,7 @@ func TestInvalidToken(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"missing", []string{executable, "--token"}},
+		{"missing", []string{"--token"}},
 		{"empty", []string{"--token=", executable}},
 		{"short", []string{"--token", strings.Repeat("a", 15), executable}},
 		{"invalid character", []string{"--token", strings.Repeat("a", 15) + "!", executable}},
@@ -150,6 +153,49 @@ func TestInvalidToken(t *testing.T) {
 			}
 			if output.Len() != 0 {
 				t.Fatalf("unexpected startup output: %q", output.String())
+			}
+		})
+	}
+}
+
+func TestCommandArgumentBoundary(t *testing.T) {
+	const token = "Abcdef01234567-_"
+	for _, test := range []struct {
+		name          string
+		input, target []string
+		port          int
+		token         string
+	}{
+		{"command only", []string{"npm"}, []string{"npm"}, 0, ""},
+		{"subcommand", []string{"npm", "install"}, []string{"npm", "install"}, 0, ""},
+		{"target help", []string{"--port", "8080", "npm", "install", "-h"}, []string{"npm", "install", "-h"}, 8080, ""},
+		{"target port", []string{"npm", "--port", "8080"}, []string{"npm", "--port", "8080"}, 0, ""},
+		{"explicit separator", []string{"--port", "8080", "--", "npm", "install", "-h"}, []string{"npm", "install", "-h"}, 8080, ""},
+		{"root token", []string{"--token", token, "npm", "install"}, []string{"npm", "install"}, 0, token},
+		{"target token", []string{"npm", "--token", "short"}, []string{"npm", "--token", "short"}, 0, ""},
+		{"literal arguments", []string{"npm", "a b", "", "--", "$HOME"}, []string{"npm", "a b", "", "--", "$HOME"}, 0, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := newRootCommand()
+			var target []string
+			command.RunE = func(_ *cobra.Command, args []string) error {
+				target = args
+				return nil
+			}
+			command.SetArgs(test.input)
+			if err := command.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			port, err := command.Flags().GetInt("port")
+			if err != nil {
+				t.Fatal(err)
+			}
+			token, err := command.Flags().GetString("token")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(target, test.target) || port != test.port || token != test.token {
+				t.Fatalf("target=%q port=%d token=%q", target, port, token)
 			}
 		})
 	}

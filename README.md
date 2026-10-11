@@ -60,7 +60,16 @@ curl -X POST 'http://127.0.0.1:48321/exec' \
 
 起動したディレクトリに `output.jpg` が作成されます。
 
-ほかの CLI も `cli2http <command>` で公開できます。
+ほかの CLI も `cli2http [options] <command> [args...]` で公開できます。
+対象コマンド以降は、オプションも含めて固定引数になります。cli2http のオプションは対象コマンドより前に指定します。`--` で明示的に区切ることもできます。
+
+```sh
+cli2http --port 8080 npm install
+cli2http --port 8080 -- npm install
+```
+
+HTTP の `args` は固定引数の後ろに追加されます。`cli2http npm install` に `{"args":["express","--save"]}` を送ると、`npm install express --save` を実行します。
+
 `cmd`・`powershell`・`pwsh`・`sh`・`bash` など主要なシェルと `cli2http` 自身は指定できません。対象 CLI の機能や権限を制限するものではありません。
 
 CLI の非ゼロ終了も HTTP 200 で返します。成否は `exitCode` で確認してください。

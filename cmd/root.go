@@ -19,13 +19,15 @@ var version = "dev"
 
 func newRootCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:          "cli2http <command>",
-		Short:        "A lightweight CLI-to-HTTP bridge",
-		Args:         cobra.ExactArgs(1),
-		SilenceUsage: true,
-		Version:      buildVersion(),
-		RunE:         runRoot,
+		Use:                   "cli2http [options] <command> [args...]",
+		DisableFlagsInUseLine: true,
+		Short:                 "A lightweight CLI-to-HTTP bridge",
+		Args:                  cobra.MinimumNArgs(1),
+		SilenceUsage:          true,
+		Version:               buildVersion(),
+		RunE:                  runRoot,
 	}
+	command.Flags().SetInterspersed(false)
 	command.Flags().Int("port", 0, "Port to listen on (0 selects an available port)")
 	command.Flags().String("token", "", "Authentication token (at least 16 characters; ASCII letters, digits, - and _)")
 	return command
@@ -43,6 +45,7 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	target.FixedArgs = args[1:]
 	port, err := cmd.Flags().GetInt("port")
 	if err != nil {
 		return err

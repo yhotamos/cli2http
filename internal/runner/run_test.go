@@ -236,3 +236,35 @@ func TestProcessTreeCleanup(t *testing.T) {
 		})
 	}
 }
+
+func TestRunFixedArgs(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLI2HTTP_RUNNER_PROCESS", "1")
+	target := Target{
+		Command:    "fixture",
+		Executable: executable,
+		FixedArgs:  []string{"-test.run=^TestRunProcess$", "--", "install"},
+	}
+	for _, test := range []struct {
+		name   string
+		args   []string
+		stdout string
+	}{
+		{"fixed only", nil, "install"},
+		{"append arguments", []string{"express", "--save"}, "install|express|--save"},
+		{"literal arguments", []string{"a b", "", "--", "--port", "8080", "-h"}, "install|a b||--|--port|8080|-h"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := target.Run(context.Background(), test.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.ExitCode != 0 || result.Stdout != test.stdout || result.Stderr != "stderr" {
+				t.Fatalf("unexpected result: %+v", result)
+			}
+		})
+	}
+}

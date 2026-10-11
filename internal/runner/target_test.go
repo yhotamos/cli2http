@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -34,7 +35,7 @@ func TestResolveMissingCommand(t *testing.T) {
 	if !errors.Is(err, exec.ErrNotFound) {
 		t.Fatalf("error = %v, want exec.ErrNotFound", err)
 	}
-	if target != (Target{}) {
+	if !reflect.DeepEqual(target, Target{}) {
 		t.Fatalf("unexpected target on error: %+v", target)
 	}
 }
@@ -49,7 +50,7 @@ func TestResolveRejectsShell(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), "shell command") {
 					t.Fatalf("error = %v, want shell rejection", err)
 				}
-				if target != (Target{}) {
+				if !reflect.DeepEqual(target, Target{}) {
 					t.Fatalf("unexpected target on error: %+v", target)
 				}
 			})
@@ -73,7 +74,7 @@ func TestResolveSymlink(t *testing.T) {
 			for _, command := range []string{filepath.Base(link), link} {
 				target, err := Resolve(command)
 				if name != "tool.exe" {
-					if err == nil || !strings.Contains(err.Error(), "is not supported") || target != (Target{}) {
+					if err == nil || !strings.Contains(err.Error(), "is not supported") || !reflect.DeepEqual(target, Target{}) {
 						t.Fatalf("target = %+v, error = %v, want command rejection", target, err)
 					}
 					continue
@@ -92,7 +93,7 @@ func TestResolveRejectsCLI2HTTP(t *testing.T) {
 	for _, command := range []string{"cli2http", "cli2http.exe", "CLI2HTTP", filepath.Join(dir, "CLI2HTTP.EXE")} {
 		t.Run(command, func(t *testing.T) {
 			target, err := Resolve(command)
-			if err == nil || !strings.Contains(err.Error(), "cli2http command") || target != (Target{}) {
+			if err == nil || !strings.Contains(err.Error(), "cli2http command") || !reflect.DeepEqual(target, Target{}) {
 				t.Fatalf("target = %+v, error = %v, want cli2http rejection", target, err)
 			}
 		})
@@ -107,7 +108,7 @@ func TestResolveRejectsSelf(t *testing.T) {
 	t.Setenv("PATH", filepath.Dir(executable))
 	for _, command := range []string{filepath.Base(executable), executable} {
 		target, err := Resolve(command)
-		if err == nil || !strings.Contains(err.Error(), "cli2http command") || target != (Target{}) {
+		if err == nil || !strings.Contains(err.Error(), "cli2http command") || !reflect.DeepEqual(target, Target{}) {
 			t.Fatalf("target = %+v, error = %v, want self rejection", target, err)
 		}
 	}
@@ -117,7 +118,7 @@ func TestResolveRejectsSelf(t *testing.T) {
 			t.Skipf("symlinks unavailable: %v", err)
 		}
 		target, err := Resolve(link)
-		if err == nil || !strings.Contains(err.Error(), "cli2http command") || target != (Target{}) {
+		if err == nil || !strings.Contains(err.Error(), "cli2http command") || !reflect.DeepEqual(target, Target{}) {
 			t.Fatalf("target = %+v, error = %v, want self rejection", target, err)
 		}
 	})
