@@ -64,7 +64,7 @@ func requestAPI(srv *Server, method, path, token, body string) *httptest.Respons
 }
 
 func TestHealthInfoAndAuthentication(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec", 0)
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "example"}}}, 0, "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,13 +75,16 @@ func TestHealthInfoAndAuthentication(t *testing.T) {
 	}
 	response = requestAPI(srv, http.MethodGet, "/info", srv.Token(), "")
 	var info struct {
-		Command string `json:"command"`
-		PID     int    `json:"pid"`
+		PID       int `json:"pid"`
+		Endpoints []struct {
+			Path    string `json:"path"`
+			Command string `json:"command"`
+		} `json:"endpoints"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &info); err != nil {
 		t.Fatal(err)
 	}
-	if response.Code != http.StatusOK || info.Command != "example" || info.PID != os.Getpid() {
+	if response.Code != http.StatusOK || info.PID != os.Getpid() || len(info.Endpoints) != 1 || info.Endpoints[0].Path != "/exec" || info.Endpoints[0].Command != "example" {
 		t.Fatalf("info: %d %+v", response.Code, info)
 	}
 	if response.Header().Get("Content-Type") != "application/json" {
@@ -130,7 +133,7 @@ func TestExecResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--"}}, 0, "", "/exec", 5*time.Second)
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "fixture", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--"}}}}, 0, "", 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +173,7 @@ func TestExecResults(t *testing.T) {
 }
 
 func TestInvalidExecRequest(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "missing", Executable: "cli2http-missing-command-5c3497"}, 0, "", "/exec", 0)
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "missing", Executable: "cli2http-missing-command-5c3497"}}}, 0, "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +206,7 @@ func TestCancellationWaitsForExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, "", "/exec", 0)
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "fixture", Executable: executable}}}, 0, "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +290,7 @@ func TestFixedTokenAuthentication(t *testing.T) {
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
 	const token = "Abcdef01234567-_"
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, token, "/exec", 0)
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "fixture", Executable: executable}}}, 0, token, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +321,7 @@ func TestCustomExecPath(t *testing.T) {
 	for _, path := range []string{"/resize", "/images/resize"} {
 		t.Run(path, func(t *testing.T) {
 			target := runner.Target{Command: "fixture", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--"}}
-			srv, err := Listen(target, 0, "", path, 0)
+			srv, err := Listen([]Endpoint{{Path: path, Target: target}}, 0, "", 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -358,7 +361,7 @@ func TestExecTimeout(t *testing.T) {
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
 	target := runner.Target{Command: "fixture", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--"}}
-	srv, err := Listen(target, 0, "", "/exec", time.Second)
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: target}}, 0, "", time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,5 +411,54 @@ func TestExecTimeout(t *testing.T) {
 	if err == nil {
 		connection.Close()
 		t.Fatal("CLI is still running after the timeout response")
+	}
+}
+
+func TestMultipleEndpoints(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLI2HTTP_API_PROCESS", "1")
+	endpoints := []Endpoint{
+		{Path: "/image", Target: runner.Target{Command: "image", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--", "image"}}},
+		{Path: "/json", Target: runner.Target{Command: "json", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--", "json"}}},
+		{Path: "/exec", Target: runner.Target{Command: "default", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--", "default"}}},
+	}
+	srv, err := Listen(endpoints, 0, "abcdefghijklmnop", 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	response := requestAPI(srv, http.MethodGet, "/info", srv.Token(), "")
+	want := fmt.Sprintf(`{"pid":%d,"endpoints":[{"path":"/image","command":"image"},{"path":"/json","command":"json"},{"path":"/exec","command":"default"}]}`+"\n", os.Getpid())
+	if response.Code != http.StatusOK || response.Body.String() != want {
+		t.Fatalf("info: %d %s", response.Code, response.Body.String())
+	}
+
+	results := make(chan string, len(endpoints))
+	for _, endpoint := range endpoints {
+		if response := requestAPI(srv, http.MethodPost, endpoint.Path, "", `{"args":[]}`); response.Code != http.StatusUnauthorized {
+			t.Fatalf("authentication %s: %d", endpoint.Path, response.Code)
+		}
+		go func() {
+			response := requestAPI(srv, http.MethodPost, endpoint.Path, srv.Token(), `{"args":["a b","","|",">","&&"]}`)
+			var result execResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+				results <- err.Error()
+				return
+			}
+			want, _ := json.Marshal([]string{endpoint.Target.Command, "a b", "", "|", ">", "&&"})
+			if response.Code != http.StatusOK || result.ExitCode != 0 || result.Stdout != string(want)+"\n" || result.Stderr != "stderr" {
+				results <- fmt.Sprintf("%s: %d %+v", endpoint.Path, response.Code, result)
+				return
+			}
+			results <- ""
+		}()
+	}
+	for range endpoints {
+		if message := <-results; message != "" {
+			t.Error(message)
+		}
 	}
 }

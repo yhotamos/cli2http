@@ -21,7 +21,11 @@ type execResponse struct {
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST "+s.execPath, s.authenticate(s.handleExec))
+	for _, endpoint := range s.endpoints {
+		mux.HandleFunc("POST "+endpoint.Path, s.authenticate(func(w http.ResponseWriter, r *http.Request) {
+			s.handleExec(w, r, endpoint.Target)
+		}))
+	}
 	mux.HandleFunc("GET /info", s.authenticate(s.handleInfo))
 	mux.HandleFunc("GET /health", s.handleHealth)
 	return mux
@@ -39,7 +43,7 @@ func (s *Server) authenticate(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, target runner.Target) {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
 		writeError(w, http.StatusBadRequest, "Content-Type must be application/json")
@@ -73,7 +77,7 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel = context.WithTimeout(ctx, s.timeout)
 		defer cancel()
 	}
-	result, err := s.target.Run(ctx, args)
+	result, err := target.Run(ctx, args)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			writeError(w, http.StatusUnprocessableEntity, "command execution timed out")
@@ -94,10 +98,18 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, struct {
+	type endpointInfo struct {
+		Path    string `json:"path"`
 		Command string `json:"command"`
-		PID     int    `json:"pid"`
-	}{Command: s.target.Command, PID: os.Getpid()})
+	}
+	endpoints := make([]endpointInfo, len(s.endpoints))
+	for i, endpoint := range s.endpoints {
+		endpoints[i] = endpointInfo{Path: endpoint.Path, Command: endpoint.Target.Command}
+	}
+	writeJSON(w, http.StatusOK, struct {
+		PID       int            `json:"pid"`
+		Endpoints []endpointInfo `json:"endpoints"`
+	}{PID: os.Getpid(), Endpoints: endpoints})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

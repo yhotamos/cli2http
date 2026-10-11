@@ -16,7 +16,7 @@ import (
 )
 
 func TestStartupAndShutdown(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec", 0)
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "example"}}}, 0, "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	if err != nil || len(token) != 32 {
 		t.Fatalf("unexpected token format")
 	}
-	other, err := Listen(runner.Target{Command: "other"}, 0, "", "/exec", 0)
+	other, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "other"}}}, 0, "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ $`
 }
 
 func TestCloseBeforeRun(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec", 0)
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "example"}}}, 0, "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestCloseBeforeRun(t *testing.T) {
 }
 
 func TestCloseWhileServing(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec", 0)
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "example"}}}, 0, "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,13 +177,13 @@ func TestCloseWhileServing(t *testing.T) {
 }
 
 func TestListenPortInUse(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec", 0)
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "example"}}}, 0, "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer srv.Close()
 	port := srv.listener.Addr().(*net.TCPAddr).Port
-	other, err := Listen(runner.Target{Command: "example"}, port, "", "/exec", 0)
+	other, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "example"}}}, port, "", 0)
 	if err == nil {
 		other.Close()
 		t.Fatal("expected an error for a port already in use")
@@ -194,7 +194,7 @@ func TestListenFixedToken(t *testing.T) {
 	for _, token := range []string{"Abcdef01234567-_", strings.Repeat("a", 17)} {
 		t.Run(token, func(t *testing.T) {
 			for range 2 {
-				srv, err := Listen(runner.Target{Command: "example"}, 0, token, "/exec", 0)
+				srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "example"}}}, 0, token, 0)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -218,7 +218,7 @@ func TestListenInvalidToken(t *testing.T) {
 		strings.Repeat("a", 15) + "あ",
 	} {
 		t.Run(token, func(t *testing.T) {
-			srv, err := Listen(runner.Target{Command: "example"}, 0, token, "/exec", 0)
+			srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "example"}}}, 0, token, 0)
 			if srv != nil {
 				srv.Close()
 				t.Fatal("invalid token started a server")
@@ -236,7 +236,7 @@ func TestListenInvalidToken(t *testing.T) {
 func TestInvalidExecPath(t *testing.T) {
 	for _, path := range []string{"", "resize", "/", "/info", "/health", "/resize/", "/a//b", "/a/../b", "/resize?x=1", "/resize#part", "/{name}", "/a%2Fb", "/a b", "/a\\b", "/a\n"} {
 		t.Run(path, func(t *testing.T) {
-			srv, err := Listen(runner.Target{Command: "example"}, 0, "", path, 0)
+			srv, err := Listen([]Endpoint{{Path: path, Target: runner.Target{Command: "example"}}}, 0, "", 0)
 			if err == nil {
 				srv.Close()
 				t.Fatal("expected an error for an invalid path")
@@ -246,12 +246,30 @@ func TestInvalidExecPath(t *testing.T) {
 }
 
 func TestListenInvalidTimeout(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec", -time.Second)
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "example"}}}, 0, "", -time.Second)
 	if srv != nil {
 		srv.Close()
 		t.Fatal("invalid timeout started a server")
 	}
 	if err == nil || !strings.Contains(err.Error(), "invalid timeout") {
 		t.Fatalf("error = %v, want timeout rejection", err)
+	}
+}
+
+func TestInvalidEndpoints(t *testing.T) {
+	for _, endpoints := range [][]Endpoint{
+		nil,
+		{{Path: "/exec"}, {Path: "/exec"}},
+		{{Path: "/first"}, {Path: "/info"}},
+		{{Path: "/first"}, {Path: "/health"}},
+	} {
+		srv, err := Listen(endpoints, 0, "", 0)
+		if srv != nil {
+			srv.Close()
+			t.Fatal("invalid endpoints started a server")
+		}
+		if err == nil {
+			t.Fatal("expected endpoint validation error")
+		}
 	}
 }
