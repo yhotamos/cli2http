@@ -4,7 +4,7 @@
 
 ## インストール
 
-Go 1.25 以降と、公開したい CLI が必要です。
+Go 1.26 以降と、公開したい CLI が必要です。
 
 ```sh
 go install github.com/yhotamos/cli2http@latest
@@ -18,23 +18,15 @@ ImageMagick で画像をリサイズする例です。`input.jpg` のあるデ�
 
 ```sh
 cd images
-cli2http magick
+cli2http "magick"
 ```
-
-`--path /resize` で実行 API を `POST /resize` に変更できます（既定は `/exec`）。`/info`・`/health` は変更されません。
-
-`--timeout 30s` で CLI の実行時間を制限できます（例：`cli2http --timeout 30s magick`）。`2m` などの時間単位を指定でき、省略時・`0` は無制限です。
-
-ポートを固定する場合は `cli2http --port 8080 magick` を使います。未指定または `--port 0` は自動割り当てです。
-
-`--token <Token>` で固定 Token を指定できます。16文字以上の半角英数字・`-`・`_` が使用でき、同じ値を指定すれば再起動後も使えます。未指定なら起動ごとに自動生成します。
 
 起動すると URL と Token が表示されます（以下は例です）。
 
 ```text
-Command : magick
 URL     : http://127.0.0.1:48321
 Token   : 4e3360d0...
+/exec : magick
 ```
 
 アクセスごとにメソッド・パス・HTTP ステータス・処理時間が表示されます。
@@ -73,33 +65,59 @@ console.log(await response.json());
 
 起動したディレクトリに `output.jpg` が作成されます。
 
-ほかの CLI も `cli2http [options] <command> [args...]` で公開できます。
-対象コマンド以降は、オプションも含めて固定引数になります。cli2http のオプションは対象コマンドより前に指定します。`--` で明示的に区切ることもできます。
+コマンドと固定引数は、1つのコマンド文字列で指定します。
 
 ```sh
-cli2http --port 8080 npm install
-cli2http --port 8080 -- npm install
+cli2http --port 8080 "npm install"
 ```
 
-HTTP の `args` は固定引数の後ろに追加されます。`cli2http npm install` に `{"args":["express","--save"]}` を送ると、`npm install express --save` を実行します。
+HTTP の `args` は固定引数の後ろに追加されます。上の例に `{"args":["express","--save"]}` を送ると、`npm install express --save` を実行します。
+
+`--path <パス> <コマンド文字列>` で、CLI を公開するパスを指定できます。複数指定すると、同じポートで複数の CLI を公開できます。Token とタイムアウトも共有します。
+
+```sh
+cli2http --port 8080 --path /image "magick" --path /json "jq -r"
+cli2http "magick" --path /json "jq"
+```
+
+パス未指定のコマンドは `/exec` で公開します。コマンド文字列内の引用符・エスケープの規則は OS ごとに異なります。[空白を含むパスや引用符の指定方法](docs/command-strings.md)を参照してください。
 
 `cmd`・`powershell`・`pwsh`・`sh`・`bash` など主要なシェルと `cli2http` 自身は指定できません。対象 CLI の機能や権限を制限するものではありません。
 
 CLI の非ゼロ終了も HTTP 200 で返します。成否は `exitCode` で確認してください。
-サーバの終了は Ctrl+C です。Token を自動生成した場合は、再起動すると値が変わります。ポートが自動割り当ての場合は URL も変わります。
+サーバの終了は Ctrl+C です。
+
+## オプション
+
+ポート・Token・タイムアウトは最初の公開指定より前に指定します。
+
+```sh
+cli2http --port 8080 --timeout 30s "magick"
+```
+
+| オプション | 説明 | 既定 |
+| ---------- | ---- | ---- |
+| `--port <番号>` | 待ち受けポート（`0` は自動割り当て） | `0` |
+| `--path <パス> <コマンド文字列>` | 指定パスで CLI を公開（複数指定可） | 未指定のコマンドは `/exec` |
+| `--token <Token>` | 再起動後も使える固定 Token | 起動ごとに自動生成 |
+| `--timeout <時間>` | CLI の実行時間制限（例：`30s`・`2m`、`0` は無制限） | `0` |
+| `--help` | ヘルプを表示 | — |
+| `--version` | バージョンを表示 | — |
+
+固定 Token は16文字以上の半角英数字・`-`・`_` を指定します。ポートを自動割り当てにする場合は、起動時に表示される URL を使ってください。
 
 ## API
 
 | メソッド・パス | 用途                                   | Token |
 | -------------- | -------------------------------------- | ----- |
 | `POST /exec`   | `args` の文字列配列を CLI に渡して実行 | 必要  |
-| `GET /info`    | 対象コマンドとサーバ PID を取得        | 必要  |
+| `GET /info`    | 公開パス・コマンド名の一覧とサーバ PID を取得        | 必要  |
 | `GET /health`  | 稼働確認                               | 不要  |
+
+`POST /exec` はパス未指定の場合です。`--path` を指定した CLI は、そのパスで実行します。
 
 引数なしの場合は `{"args":[]}` を送ります。CLI は cli2http の作業ディレクトリで実行されます。
 stdout・stderr はそれぞれ最大 10 MiB で、超過すると実行を中断して HTTP 422 を返します。タイムアウトも実行を中断して HTTP 422 を返します（`{"error":"command execution timed out"}`）。停止処理のため、応答までに指定時間を超える場合があります。
-
-バージョン確認は `cli2http --version`、ヘルプは `cli2http --help` です。
 
 ## ライセンス
 
