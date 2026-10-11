@@ -25,14 +25,18 @@ type Server struct {
 	target   runner.Target
 	token    string
 	execPath string
+	timeout  time.Duration
 	listener net.Listener
 	http     *http.Server
 }
 
 // Listen reserves a loopback port and uses the specified token.
 // An empty token generates a fresh token. Port 0 selects an available port.
-// execPath specifies the command execution API path.
-func Listen(target runner.Target, port int, token, execPath string) (*Server, error) {
+// execPath specifies the command execution API path. Timeout 0 disables the execution limit.
+func Listen(target runner.Target, port int, token, execPath string, timeout time.Duration) (*Server, error) {
+	if timeout < 0 {
+		return nil, fmt.Errorf("invalid timeout %s: must not be negative", timeout)
+	}
 	if err := validateExecPath(execPath); err != nil {
 		return nil, err
 	}
@@ -56,6 +60,7 @@ func Listen(target runner.Target, port int, token, execPath string) (*Server, er
 		target:   target,
 		token:    token,
 		execPath: execPath,
+		timeout:  timeout,
 		listener: listener,
 		http: &http.Server{
 			ReadHeaderTimeout: 5 * time.Second,

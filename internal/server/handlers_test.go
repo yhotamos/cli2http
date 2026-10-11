@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -32,9 +33,15 @@ func TestAPIProcess(t *testing.T) {
 		os.Exit(0)
 	}
 	if len(args) == 2 && args[0] == "wait" {
-		if err := os.WriteFile(args[1], []byte("started"), 0600); err != nil {
+		listener, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
 			os.Exit(1)
 		}
+		defer listener.Close()
+		if err := os.WriteFile(args[1], []byte(listener.Addr().String()), 0600); err != nil {
+			os.Exit(1)
+		}
+		fmt.Fprint(os.Stdout, "partial output")
 		time.Sleep(30 * time.Second)
 	}
 	_ = json.NewEncoder(os.Stdout).Encode(args)
@@ -57,7 +64,7 @@ func requestAPI(srv *Server, method, path, token, body string) *httptest.Respons
 }
 
 func TestHealthInfoAndAuthentication(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec")
+	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +130,7 @@ func TestExecResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--"}}, 0, "", "/exec")
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--"}}, 0, "", "/exec", 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +170,7 @@ func TestExecResults(t *testing.T) {
 }
 
 func TestInvalidExecRequest(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "missing", Executable: "cli2http-missing-command-5c3497"}, 0, "", "/exec")
+	srv, err := Listen(runner.Target{Command: "missing", Executable: "cli2http-missing-command-5c3497"}, 0, "", "/exec", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +203,7 @@ func TestCancellationWaitsForExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, "", "/exec")
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, "", "/exec", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +287,7 @@ func TestFixedTokenAuthentication(t *testing.T) {
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
 	const token = "Abcdef01234567-_"
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, token, "/exec")
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, token, "/exec", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +318,7 @@ func TestCustomExecPath(t *testing.T) {
 	for _, path := range []string{"/resize", "/images/resize"} {
 		t.Run(path, func(t *testing.T) {
 			target := runner.Target{Command: "fixture", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--"}}
-			srv, err := Listen(target, 0, "", path)
+			srv, err := Listen(target, 0, "", path, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -341,5 +348,65 @@ func TestCustomExecPath(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestExecTimeout(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLI2HTTP_API_PROCESS", "1")
+	target := runner.Target{Command: "fixture", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--"}}
+	srv, err := Listen(target, 0, "", "/exec", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+
+	marker := filepath.Join(t.TempDir(), "started")
+	body, err := json.Marshal(map[string]any{"args": []string{"wait", marker}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	request := httptest.NewRequest(http.MethodPost, "/exec", strings.NewReader(string(body))).WithContext(ctx)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+srv.Token())
+	response := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		srv.http.Handler.ServeHTTP(response, request)
+		close(done)
+	}()
+
+	var address string
+	for address == "" {
+		data, _ := os.ReadFile(marker)
+		address = string(data)
+		if address != "" {
+			break
+		}
+		select {
+		case <-done:
+			t.Fatal("execution ended before the CLI started")
+		case <-ctx.Done():
+			t.Fatal("CLI did not start")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	select {
+	case <-done:
+	case <-ctx.Done():
+		t.Fatal("execution did not finish after timeout")
+	}
+	if response.Code != http.StatusUnprocessableEntity || response.Body.String() != "{\"error\":\"command execution timed out\"}\n" {
+		t.Fatalf("timeout: %d %s", response.Code, response.Body.String())
+	}
+	connection, err := net.DialTimeout("tcp4", address, 100*time.Millisecond)
+	if err == nil {
+		connection.Close()
+		t.Fatal("CLI is still running after the timeout response")
 	}
 }

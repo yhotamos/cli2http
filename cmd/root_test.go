@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -214,6 +215,62 @@ func TestInvalidPath(t *testing.T) {
 			command.SetArgs([]string{"--path", path, executable})
 			if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "invalid path") {
 				t.Fatalf("error = %v, want invalid path", err)
+			}
+			if output.Len() != 0 {
+				t.Fatalf("unexpected startup output: %q", output.String())
+			}
+		})
+	}
+}
+
+func TestTimeoutOption(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		input, target []string
+		timeout       time.Duration
+	}{
+		{"default", []string{"npm"}, []string{"npm"}, 0},
+		{"zero", []string{"--timeout", "0", "npm"}, []string{"npm"}, 0},
+		{"seconds", []string{"--timeout", "30s", "npm", "install"}, []string{"npm", "install"}, 30 * time.Second},
+		{"minutes", []string{"--timeout=2m", "npm"}, []string{"npm"}, 2 * time.Minute},
+		{"target timeout", []string{"npm", "--timeout", "30s"}, []string{"npm", "--timeout", "30s"}, 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := newRootCommand()
+			command.RunE = func(cmd *cobra.Command, args []string) error {
+				timeout, err := cmd.Flags().GetDuration("timeout")
+				if err != nil {
+					return err
+				}
+				if timeout != test.timeout || !slices.Equal(args, test.target) {
+					t.Fatalf("timeout=%s args=%q", timeout, args)
+				}
+				return nil
+			}
+			command.SetArgs(test.input)
+			if err := command.Execute(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestInvalidTimeout(t *testing.T) {
+	executable := writeTargetFixture(t)
+	for _, args := range [][]string{
+		{"--timeout", "-1s", executable},
+		{"--timeout", "30", executable},
+		{"--timeout", "invalid", executable},
+		{"--timeout"},
+	} {
+		t.Run(strings.Join(args, ","), func(t *testing.T) {
+			command := newRootCommand()
+			var output bytes.Buffer
+			command.SetOut(&output)
+			command.SetErr(&bytes.Buffer{})
+			command.SetArgs(args)
+			if err := command.Execute(); err == nil {
+				t.Fatal("expected invalid timeout error")
 			}
 			if output.Len() != 0 {
 				t.Fatalf("unexpected startup output: %q", output.String())

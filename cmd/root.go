@@ -28,6 +28,7 @@ func newRootCommand() *cobra.Command {
 		RunE:                  runRoot,
 	}
 	command.Flags().SetInterspersed(false)
+	command.Flags().Duration("timeout", 0, "Command execution timeout (e.g. 30s or 2m; 0 disables the limit)")
 	command.Flags().String("path", "/exec", "Path for the command execution API")
 	command.Flags().Int("port", 0, "Port to listen on (0 selects an available port)")
 	command.Flags().String("token", "", "Authentication token (at least 16 characters; ASCII letters, digits, - and _)")
@@ -62,7 +63,11 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	srv, err := server.Listen(target, port, token, execPath)
+	timeout, err := cmd.Flags().GetDuration("timeout")
+	if err != nil {
+		return err
+	}
+	srv, err := server.Listen(target, port, token, execPath, timeout)
 	if err != nil {
 		return err
 	}

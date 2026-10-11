@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -66,8 +67,18 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 		}
 		args[i] = *arg
 	}
-	result, err := s.target.Run(r.Context(), args)
+	ctx := r.Context()
+	if s.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.timeout)
+		defer cancel()
+	}
+	result, err := s.target.Run(ctx, args)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			writeError(w, http.StatusUnprocessableEntity, "command execution timed out")
+			return
+		}
 		status := http.StatusInternalServerError
 		if errors.Is(err, runner.ErrOutputLimit) {
 			status = http.StatusUnprocessableEntity

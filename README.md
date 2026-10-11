@@ -23,6 +23,8 @@ cli2http magick
 
 `--path /resize` で実行 API を `POST /resize` に変更できます（既定は `/exec`）。`/info`・`/health` は変更されません。
 
+`--timeout 30s` で CLI の実行時間を制限できます（例：`cli2http --timeout 30s magick`）。`2m` などの時間単位を指定でき、省略時・`0` は無制限です。
+
 ポートを固定する場合は `cli2http --port 8080 magick` を使います。未指定または `--port 0` は自動割り当てです。
 
 `--token <Token>` で固定 Token を指定できます。16文字以上の半角英数字・`-`・`_` が使用でき、同じ値を指定すれば再起動後も使えます。未指定なら起動ごとに自動生成します。
@@ -95,7 +97,7 @@ CLI の非ゼロ終了も HTTP 200 で返します。成否は `exitCode` で確
 | `GET /health`  | 稼働確認                               | 不要  |
 
 引数なしの場合は `{"args":[]}` を送ります。CLI は cli2http の作業ディレクトリで実行されます。
-stdout・stderr はそれぞれ最大 10 MiB で、超過すると実行を中断して HTTP 422 を返します。
+stdout・stderr はそれぞれ最大 10 MiB で、超過すると実行を中断して HTTP 422 を返します。タイムアウトも実行を中断して HTTP 422 を返します（`{"error":"command execution timed out"}`）。停止処理のため、応答までに指定時間を超える場合があります。
 
 バージョン確認は `cli2http --version`、ヘルプは `cli2http --help` です。
 
