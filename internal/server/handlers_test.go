@@ -57,7 +57,7 @@ func requestAPI(srv *Server, method, path, token, body string) *httptest.Respons
 }
 
 func TestHealthInfoAndAuthentication(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0, "")
+	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestExecResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--"}}, 0, "")
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--"}}, 0, "", "/exec")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestExecResults(t *testing.T) {
 }
 
 func TestInvalidExecRequest(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "missing", Executable: "cli2http-missing-command-5c3497"}, 0, "")
+	srv, err := Listen(runner.Target{Command: "missing", Executable: "cli2http-missing-command-5c3497"}, 0, "", "/exec")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func TestCancellationWaitsForExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, "")
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, "", "/exec")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestFixedTokenAuthentication(t *testing.T) {
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
 	const token = "Abcdef01234567-_"
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, token)
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, token, "/exec")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,5 +299,47 @@ func TestFixedTokenAuthentication(t *testing.T) {
 				t.Fatalf("%s status = %d, want %d", endpoint.path, response.Code, want)
 			}
 		}
+	}
+}
+
+func TestCustomExecPath(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLI2HTTP_API_PROCESS", "1")
+	for _, path := range []string{"/resize", "/images/resize"} {
+		t.Run(path, func(t *testing.T) {
+			target := runner.Target{Command: "fixture", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--"}}
+			srv, err := Listen(target, 0, "", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer srv.Close()
+			response := requestAPI(srv, http.MethodPost, path, srv.Token(), `{"args":["image.jpg"]}`)
+			var result execResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if response.Code != http.StatusOK || result.ExitCode != 0 || result.Stdout != "[\"image.jpg\"]\n" || result.Stderr != "stderr" {
+				t.Fatalf("execution: %d %+v", response.Code, result)
+			}
+			for _, test := range []struct {
+				method, path, token string
+				status              int
+			}{
+				{http.MethodPost, path, "", http.StatusUnauthorized},
+				{http.MethodGet, path, srv.Token(), http.StatusMethodNotAllowed},
+				{http.MethodPost, "/exec", srv.Token(), http.StatusNotFound},
+				{http.MethodPost, path + "/child", srv.Token(), http.StatusNotFound},
+				{http.MethodGet, "/info", srv.Token(), http.StatusOK},
+				{http.MethodGet, "/health", "", http.StatusOK},
+			} {
+				response := requestAPI(srv, test.method, test.path, test.token, `{"args":[]}`)
+				if response.Code != test.status {
+					t.Fatalf("%s %s: %d, want %d", test.method, test.path, response.Code, test.status)
+				}
+			}
+		})
 	}
 }

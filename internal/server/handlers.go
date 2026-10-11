@@ -20,7 +20,7 @@ type execResponse struct {
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /exec", s.authenticate(s.handleExec))
+	mux.HandleFunc("POST "+s.execPath, s.authenticate(s.handleExec))
 	mux.HandleFunc("GET /info", s.authenticate(s.handleInfo))
 	mux.HandleFunc("GET /health", s.handleHealth)
 	return mux

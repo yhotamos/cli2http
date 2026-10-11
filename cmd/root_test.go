@@ -34,6 +34,7 @@ func TestStartupOutput(t *testing.T) {
 		wantPort  string
 		wantToken string
 	}{
+		{"custom path", []string{"--path", "/resize", name}, `[1-9][0-9]*`, `[0-9a-f]{64}`},
 		{"default", []string{name}, `[1-9][0-9]*`, `[0-9a-f]{64}`},
 		{"automatic", []string{"--port", "0", name}, `[1-9][0-9]*`, `[0-9a-f]{64}`},
 		{"specified", []string{"--port", port, name}, port, `[0-9a-f]{64}`},
@@ -168,6 +169,7 @@ func TestCommandArgumentBoundary(t *testing.T) {
 	}{
 		{"command only", []string{"npm"}, []string{"npm"}, 0, ""},
 		{"subcommand", []string{"npm", "install"}, []string{"npm", "install"}, 0, ""},
+		{"target path", []string{"npm", "--path", "/resize"}, []string{"npm", "--path", "/resize"}, 0, ""},
 		{"target help", []string{"--port", "8080", "npm", "install", "-h"}, []string{"npm", "install", "-h"}, 8080, ""},
 		{"target port", []string{"npm", "--port", "8080"}, []string{"npm", "--port", "8080"}, 0, ""},
 		{"explicit separator", []string{"--port", "8080", "--", "npm", "install", "-h"}, []string{"npm", "install", "-h"}, 8080, ""},
@@ -196,6 +198,25 @@ func TestCommandArgumentBoundary(t *testing.T) {
 			}
 			if !slices.Equal(target, test.target) || port != test.port || token != test.token {
 				t.Fatalf("target=%q port=%d token=%q", target, port, token)
+			}
+		})
+	}
+}
+
+func TestInvalidPath(t *testing.T) {
+	executable := writeTargetFixture(t)
+	for _, path := range []string{"", "resize", "/info", "/health", "/resize?size=800", "/{name}", "/resize/", "/a/../resize", "/resize\n"} {
+		t.Run(path, func(t *testing.T) {
+			command := newRootCommand()
+			var output bytes.Buffer
+			command.SetOut(&output)
+			command.SetErr(&bytes.Buffer{})
+			command.SetArgs([]string{"--path", path, executable})
+			if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "invalid path") {
+				t.Fatalf("error = %v, want invalid path", err)
+			}
+			if output.Len() != 0 {
+				t.Fatalf("unexpected startup output: %q", output.String())
 			}
 		})
 	}
