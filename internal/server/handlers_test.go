@@ -123,7 +123,7 @@ func TestExecResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CLI2HTTP_API_PROCESS", "1")
-	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable}, 0, "")
+	srv, err := Listen(runner.Target{Command: "fixture", Executable: executable, FixedArgs: []string{"-test.run=^TestAPIProcess$", "--"}}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,12 +133,12 @@ func TestExecResults(t *testing.T) {
 		args []string
 		code int
 	}{
+		{"no arguments", []string{}, 0},
 		{"success", []string{"a b", "&&", "|", ">", ";", "$HOME"}, 0},
 		{"nonzero exit", []string{"fail"}, 7},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			args := append([]string{"-test.run=^TestAPIProcess$", "--"}, test.args...)
-			body, _ := json.Marshal(map[string]any{"args": args})
+			body, _ := json.Marshal(map[string]any{"args": test.args})
 			response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), string(body))
 			var result map[string]any
 			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
@@ -154,7 +154,7 @@ func TestExecResults(t *testing.T) {
 		})
 	}
 	body, _ := json.Marshal(map[string]any{
-		"args": []string{"-test.run=^TestAPIProcess$", "--", "output"},
+		"args": []string{"output"},
 	})
 	response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), string(body))
 	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "output exceeds 10 MiB") {
