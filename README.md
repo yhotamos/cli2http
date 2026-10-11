@@ -39,13 +39,22 @@ Token   : 4e3360d0...
 POST /exec 200 in 498ms
 ```
 
-別のターミナルから `input.jpg` を 800×600 にリサイズして `output.jpg` として保存します。URL と `<Token>` は、表示された実際の値に置き換えてください。
+画像をリサイズするリクエスト例です。URL と `<Token>` は、表示された実際の値に置き換えてください。
 
-```sh
-curl -X POST 'http://127.0.0.1:48321/exec' \
-  -H 'Authorization: Bearer <Token>' \
-  -H 'Content-Type: application/json' \
-  -d '{"args":["input.jpg","-resize","800x600","output.jpg"]}'
+Node.js の例：
+
+```js
+const response = await fetch("http://127.0.0.1:48321/exec", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer <Token>",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    args: ["input.jpg", "-resize", "800x600", "output.jpg"],
+  }),
+});
+console.log(await response.json());
 ```
 
 レスポンス例：
