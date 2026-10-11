@@ -20,25 +20,40 @@ import (
 
 const minTokenLength = 16
 
-// Server owns the listener and the startup information for one target CLI.
+// Endpoint associates a public API path with a resolved CLI.
+type Endpoint struct {
+	Path   string
+	Target runner.Target
+}
+
+// Server owns one listener for the published CLIs.
 type Server struct {
-	target   runner.Target
-	token    string
-	execPath string
-	timeout  time.Duration
-	listener net.Listener
-	http     *http.Server
+	endpoints []Endpoint
+	token     string
+	timeout   time.Duration
+	listener  net.Listener
+	http      *http.Server
 }
 
 // Listen reserves a loopback port and uses the specified token.
 // An empty token generates a fresh token. Port 0 selects an available port.
-// execPath specifies the command execution API path. Timeout 0 disables the execution limit.
-func Listen(target runner.Target, port int, token, execPath string, timeout time.Duration) (*Server, error) {
+// Endpoints are registered in order. Timeout 0 disables the execution limit.
+func Listen(endpoints []Endpoint, port int, token string, timeout time.Duration) (*Server, error) {
 	if timeout < 0 {
 		return nil, fmt.Errorf("invalid timeout %s: must not be negative", timeout)
 	}
-	if err := validateExecPath(execPath); err != nil {
-		return nil, err
+	if len(endpoints) == 0 {
+		return nil, fmt.Errorf("at least one endpoint is required")
+	}
+	paths := make(map[string]bool, len(endpoints))
+	for _, endpoint := range endpoints {
+		if err := validateExecPath(endpoint.Path); err != nil {
+			return nil, err
+		}
+		if paths[endpoint.Path] {
+			return nil, fmt.Errorf("duplicate path %q", endpoint.Path)
+		}
+		paths[endpoint.Path] = true
 	}
 	if port < 0 || port > 65535 {
 		return nil, fmt.Errorf("invalid port %d: must be between 0 and 65535", port)
@@ -57,11 +72,10 @@ func Listen(target runner.Target, port int, token, execPath string, timeout time
 		return nil, fmt.Errorf("listen on localhost: %w", err)
 	}
 	s := &Server{
-		target:   target,
-		token:    token,
-		execPath: execPath,
-		timeout:  timeout,
-		listener: listener,
+		endpoints: endpoints,
+		token:     token,
+		timeout:   timeout,
+		listener:  listener,
 		http: &http.Server{
 			ReadHeaderTimeout: 5 * time.Second,
 		},
@@ -104,9 +118,8 @@ func validateToken(token string) error {
 	return nil
 }
 
-func (s *Server) Command() string { return s.target.Command }
-func (s *Server) URL() string     { return "http://" + s.listener.Addr().String() }
-func (s *Server) Token() string   { return s.token }
+func (s *Server) URL() string   { return "http://" + s.listener.Addr().String() }
+func (s *Server) Token() string { return s.token }
 
 // Close stops HTTP connections and releases the listener, even before Run.
 // It is safe to call more than once. Closed connections cancel their requests.

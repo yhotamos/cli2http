@@ -3,6 +3,7 @@ module github.com/yhotamos/cli2http
 go 1.26.0
 
 require (
+	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/mod v0.41.0
 	golang.org/x/sys v0.48.0

@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -12,8 +13,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/spf13/cobra"
 )
 
 func TestStartupOutput(t *testing.T) {
@@ -52,7 +51,11 @@ func TestStartupOutput(t *testing.T) {
 			if err := command.ExecuteContext(ctx); err != nil {
 				t.Fatal(err)
 			}
-			want := `^Command : ` + regexp.QuoteMeta(name) + `\nURL     : http://127\.0\.0\.1:` + test.wantPort + `\nToken   : ` + test.wantToken + `\n$`
+			path := "/exec"
+			if test.name == "custom path" {
+				path = "/resize"
+			}
+			want := `^URL     : http://127\.0\.0\.1:` + test.wantPort + `\nToken   : ` + test.wantToken + `\n` + path + ` : ` + regexp.QuoteMeta(name) + `\n$`
 			if !regexp.MustCompile(want).MatchString(output.String()) {
 				t.Fatalf("unexpected startup output: %q", output.String())
 			}
@@ -160,50 +163,6 @@ func TestInvalidToken(t *testing.T) {
 	}
 }
 
-func TestCommandArgumentBoundary(t *testing.T) {
-	const token = "Abcdef01234567-_"
-	for _, test := range []struct {
-		name          string
-		input, target []string
-		port          int
-		token         string
-	}{
-		{"command only", []string{"npm"}, []string{"npm"}, 0, ""},
-		{"subcommand", []string{"npm", "install"}, []string{"npm", "install"}, 0, ""},
-		{"target path", []string{"npm", "--path", "/resize"}, []string{"npm", "--path", "/resize"}, 0, ""},
-		{"target help", []string{"--port", "8080", "npm", "install", "-h"}, []string{"npm", "install", "-h"}, 8080, ""},
-		{"target port", []string{"npm", "--port", "8080"}, []string{"npm", "--port", "8080"}, 0, ""},
-		{"explicit separator", []string{"--port", "8080", "--", "npm", "install", "-h"}, []string{"npm", "install", "-h"}, 8080, ""},
-		{"root token", []string{"--token", token, "npm", "install"}, []string{"npm", "install"}, 0, token},
-		{"target token", []string{"npm", "--token", "short"}, []string{"npm", "--token", "short"}, 0, ""},
-		{"literal arguments", []string{"npm", "a b", "", "--", "$HOME"}, []string{"npm", "a b", "", "--", "$HOME"}, 0, ""},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			command := newRootCommand()
-			var target []string
-			command.RunE = func(_ *cobra.Command, args []string) error {
-				target = args
-				return nil
-			}
-			command.SetArgs(test.input)
-			if err := command.Execute(); err != nil {
-				t.Fatal(err)
-			}
-			port, err := command.Flags().GetInt("port")
-			if err != nil {
-				t.Fatal(err)
-			}
-			token, err := command.Flags().GetString("token")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !slices.Equal(target, test.target) || port != test.port || token != test.token {
-				t.Fatalf("target=%q port=%d token=%q", target, port, token)
-			}
-		})
-	}
-}
-
 func TestInvalidPath(t *testing.T) {
 	executable := writeTargetFixture(t)
 	for _, path := range []string{"", "resize", "/info", "/health", "/resize?size=800", "/{name}", "/resize/", "/a/../resize", "/resize\n"} {
@@ -223,33 +182,31 @@ func TestInvalidPath(t *testing.T) {
 	}
 }
 
-func TestTimeoutOption(t *testing.T) {
+func TestStartupOptions(t *testing.T) {
 	for _, test := range []struct {
-		name          string
-		input, target []string
-		timeout       time.Duration
+		name             string
+		input, remaining []string
+		timeout          time.Duration
+		port             int
 	}{
-		{"default", []string{"npm"}, []string{"npm"}, 0},
-		{"zero", []string{"--timeout", "0", "npm"}, []string{"npm"}, 0},
-		{"seconds", []string{"--timeout", "30s", "npm", "install"}, []string{"npm", "install"}, 30 * time.Second},
-		{"minutes", []string{"--timeout=2m", "npm"}, []string{"npm"}, 2 * time.Minute},
-		{"target timeout", []string{"npm", "--timeout", "30s"}, []string{"npm", "--timeout", "30s"}, 0},
+		{"default", []string{"tool"}, []string{"tool"}, 0, 0},
+		{"zero", []string{"--timeout", "0", "tool"}, []string{"tool"}, 0, 0},
+		{"seconds", []string{"--timeout", "30s", "tool fixed"}, []string{"tool fixed"}, 30 * time.Second, 0},
+		{"minutes", []string{"--timeout=2m", "tool"}, []string{"tool"}, 2 * time.Minute, 0},
+		{"path", []string{"--port", "8080", "--path", "/a", "tool"}, []string{"--path", "/a", "tool"}, 0, 8080},
+		{"separator", []string{"--port=8080", "--", "tool"}, []string{"tool"}, 0, 8080},
+		{"options after command", []string{"tool", "--timeout", "30s"}, []string{"tool", "--timeout", "30s"}, 0, 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			command := newRootCommand()
-			command.RunE = func(cmd *cobra.Command, args []string) error {
-				timeout, err := cmd.Flags().GetDuration("timeout")
-				if err != nil {
-					return err
-				}
-				if timeout != test.timeout || !slices.Equal(args, test.target) {
-					t.Fatalf("timeout=%s args=%q", timeout, args)
-				}
-				return nil
-			}
-			command.SetArgs(test.input)
-			if err := command.Execute(); err != nil {
+			args, err := parseOptions(command, test.input)
+			if err != nil {
 				t.Fatal(err)
+			}
+			timeout, _ := command.Flags().GetDuration("timeout")
+			port, _ := command.Flags().GetInt("port")
+			if timeout != test.timeout || port != test.port || !slices.Equal(args, test.remaining) {
+				t.Fatalf("args=%q timeout=%s port=%d", args, timeout, port)
 			}
 		})
 	}
@@ -276,5 +233,116 @@ func TestInvalidTimeout(t *testing.T) {
 				t.Fatalf("unexpected startup output: %q", output.String())
 			}
 		})
+	}
+}
+
+func TestPublicationArguments(t *testing.T) {
+	executable := writeTargetFixture(t)
+	commandLine := `"` + executable + `" "" "a b" --flag`
+	for _, test := range []struct {
+		name  string
+		args  []string
+		paths []string
+	}{
+		{"default", []string{commandLine}, []string{"/exec"}},
+		{"custom", []string{"--path", "/a", commandLine}, []string{"/a"}},
+		{"equals", []string{"--path=/a", commandLine}, []string{"/a"}},
+		{"multiple", []string{"--path", "/b", commandLine, "--path", "/a", commandLine}, []string{"/b", "/a"}},
+		{"default and custom", []string{commandLine, "--path", "/a", commandLine}, []string{"/exec", "/a"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			endpoints, err := parseEndpoints(test.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(endpoints) != len(test.paths) {
+				t.Fatalf("endpoints=%+v", endpoints)
+			}
+			for i, endpoint := range endpoints {
+				if endpoint.Path != test.paths[i] || !slices.Equal(endpoint.Target.FixedArgs, []string{"", "a b", "--flag"}) {
+					t.Fatalf("endpoint=%+v", endpoint)
+				}
+			}
+		})
+	}
+}
+
+func TestInvalidPublicationArguments(t *testing.T) {
+	executable := writeTargetFixture(t)
+	for _, args := range [][]string{
+		nil, {"--path"}, {"--path", "/a"}, {"--path=/a"},
+		{executable, "fixed"}, {executable, executable},
+		{executable, "--port", "8080"}, {"--path", "/a", executable, "--token", "abcdefghijklmnop"},
+		{executable, "--path", "/a", "sh"}, {"--path", "/a", "cli2http"},
+	} {
+		t.Run(strings.Join(args, ","), func(t *testing.T) {
+			if _, err := parseEndpoints(args); err == nil {
+				t.Fatal("expected publication error")
+			}
+		})
+	}
+}
+
+func TestDuplicatePathBeforeStartup(t *testing.T) {
+	executable := writeTargetFixture(t)
+	command := newRootCommand()
+	var output bytes.Buffer
+	command.SetOut(&output)
+	command.SetErr(&bytes.Buffer{})
+	command.SetArgs([]string{executable, "--path", "/exec", executable})
+	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "duplicate path") {
+		t.Fatalf("error=%v", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("unexpected startup output: %q", output.String())
+	}
+}
+
+func TestHelpAndVersion(t *testing.T) {
+	for _, flag := range []string{"--help", "-h", "--version", "-v"} {
+		t.Run(flag, func(t *testing.T) {
+			command := newRootCommand()
+			var output bytes.Buffer
+			command.SetOut(&output)
+			command.SetArgs([]string{flag})
+			if err := command.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if output.Len() == 0 {
+				t.Fatal("expected help or version output")
+			}
+		})
+	}
+}
+
+func TestMultipleStartupOutput(t *testing.T) {
+	executable := writeTargetFixture(t)
+	command := newRootCommand()
+	var output bytes.Buffer
+	command.SetOut(&output)
+	command.SetArgs([]string{executable, "--path", "/second", executable + " fixed", "--path", "/first", executable})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := command.ExecuteContext(ctx); err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("/exec : %s\n/second : %s\n/first : %s\n", executable, executable, executable)
+	if !strings.HasSuffix(output.String(), want) || strings.Count(output.String(), "URL     : ") != 1 || strings.Count(output.String(), "Token   : ") != 1 {
+		t.Fatalf("unexpected output: %q", output.String())
+	}
+}
+
+func TestAllTargetsResolvedBeforeStartup(t *testing.T) {
+	executable := writeTargetFixture(t)
+	command := newRootCommand()
+	var output bytes.Buffer
+	command.SetOut(&output)
+	command.SetErr(&bytes.Buffer{})
+	command.SetArgs([]string{executable, "--path", "/other", "cli2http-missing-command-5c3497"})
+	if err := command.Execute(); err == nil {
+		t.Fatal("expected missing executable error")
+	}
+	if output.Len() != 0 {
+		t.Fatalf("unexpected startup output: %q", output.String())
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"os/signal"
 	"runtime/debug"
 
-	"github.com/yhotamos/cli2http/internal/runner"
 	"github.com/yhotamos/cli2http/internal/server"
 
 	"github.com/spf13/cobra"
@@ -19,17 +18,16 @@ var version = "dev"
 
 func newRootCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:                   "cli2http [options] <command> [args...]",
+		Use:                   `cli2http [options] [--path <path>] <command-string> ...`,
 		DisableFlagsInUseLine: true,
+		DisableFlagParsing:    true,
 		Short:                 "A lightweight CLI-to-HTTP bridge",
-		Args:                  cobra.MinimumNArgs(1),
 		SilenceUsage:          true,
 		Version:               buildVersion(),
 		RunE:                  runRoot,
 	}
-	command.Flags().SetInterspersed(false)
 	command.Flags().Duration("timeout", 0, "Command execution timeout (e.g. 30s or 2m; 0 disables the limit)")
-	command.Flags().String("path", "/exec", "Path for the command execution API")
+	command.Flags().String("path", "/exec", "Publish a command string at this path (repeatable)")
 	command.Flags().Int("port", 0, "Port to listen on (0 selects an available port)")
 	command.Flags().String("token", "", "Authentication token (at least 16 characters; ASCII letters, digits, - and _)")
 	return command
@@ -43,11 +41,21 @@ func Execute() error {
 }
 
 func runRoot(cmd *cobra.Command, args []string) error {
-	target, err := runner.Resolve(args[0])
+	args, err := parseOptions(cmd, args)
 	if err != nil {
 		return err
 	}
-	target.FixedArgs = args[1:]
+	if help, _ := cmd.Flags().GetBool("help"); help {
+		return cmd.Help()
+	}
+	if showVersion, _ := cmd.Flags().GetBool("version"); showVersion {
+		_, err := fmt.Fprintf(cmd.OutOrStdout(), "%s version %s\n", cmd.Name(), cmd.Version)
+		return err
+	}
+	endpoints, err := parseEndpoints(args)
+	if err != nil {
+		return err
+	}
 	port, err := cmd.Flags().GetInt("port")
 	if err != nil {
 		return err
@@ -59,21 +67,22 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("token") && token == "" {
 		return fmt.Errorf("invalid token: must not be empty")
 	}
-	execPath, err := cmd.Flags().GetString("path")
-	if err != nil {
-		return err
-	}
 	timeout, err := cmd.Flags().GetDuration("timeout")
 	if err != nil {
 		return err
 	}
-	srv, err := server.Listen(target, port, token, execPath, timeout)
+	srv, err := server.Listen(endpoints, port, token, timeout)
 	if err != nil {
 		return err
 	}
 	defer srv.Close()
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Command : %s\nURL     : %s\nToken   : %s\n", srv.Command(), srv.URL(), srv.Token()); err != nil {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "URL     : %s\nToken   : %s\n", srv.URL(), srv.Token()); err != nil {
 		return err
+	}
+	for _, endpoint := range endpoints {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s : %s\n", endpoint.Path, endpoint.Target.Command); err != nil {
+			return err
+		}
 	}
 	return srv.Run(cmd.Context(), cmd.OutOrStdout())
 }
