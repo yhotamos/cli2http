@@ -9,6 +9,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/yhotamos/cli2http/internal/accesslog"
@@ -21,13 +24,18 @@ const minTokenLength = 16
 type Server struct {
 	target   runner.Target
 	token    string
+	execPath string
 	listener net.Listener
 	http     *http.Server
 }
 
 // Listen reserves a loopback port and uses the specified token.
 // An empty token generates a fresh token. Port 0 selects an available port.
-func Listen(target runner.Target, port int, token string) (*Server, error) {
+// execPath specifies the command execution API path.
+func Listen(target runner.Target, port int, token, execPath string) (*Server, error) {
+	if err := validateExecPath(execPath); err != nil {
+		return nil, err
+	}
 	if port < 0 || port > 65535 {
 		return nil, fmt.Errorf("invalid port %d: must be between 0 and 65535", port)
 	}
@@ -47,6 +55,7 @@ func Listen(target runner.Target, port int, token string) (*Server, error) {
 	s := &Server{
 		target:   target,
 		token:    token,
+		execPath: execPath,
 		listener: listener,
 		http: &http.Server{
 			ReadHeaderTimeout: 5 * time.Second,
@@ -54,6 +63,23 @@ func Listen(target runner.Target, port int, token string) (*Server, error) {
 	}
 	s.http.Handler = s.routes()
 	return s, nil
+}
+
+func validateExecPath(execPath string) error {
+	_, err := url.ParseRequestURI(execPath)
+	if err != nil || !strings.HasPrefix(execPath, "/") {
+		return fmt.Errorf("invalid path %q: must be an absolute URL path", execPath)
+	}
+	if strings.ContainsAny(execPath, "?#{}%\\ \t\r\n") {
+		return fmt.Errorf("invalid path %q: query, fragment, wildcard, escaping and whitespace are not allowed", execPath)
+	}
+	if path.Clean(execPath) != execPath || strings.HasSuffix(execPath, "/") {
+		return fmt.Errorf("invalid path %q: must be a clean path without a trailing slash", execPath)
+	}
+	if execPath == "/info" || execPath == "/health" {
+		return fmt.Errorf("invalid path %q: reserved for a built-in API", execPath)
+	}
+	return nil
 }
 
 func validateToken(token string) error {

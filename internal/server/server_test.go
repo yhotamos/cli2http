@@ -16,7 +16,7 @@ import (
 )
 
 func TestStartupAndShutdown(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0, "")
+	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestStartupAndShutdown(t *testing.T) {
 	if err != nil || len(token) != 32 {
 		t.Fatalf("unexpected token format")
 	}
-	other, err := Listen(runner.Target{Command: "other"}, 0, "")
+	other, err := Listen(runner.Target{Command: "other"}, 0, "", "/exec")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ $`
 }
 
 func TestCloseBeforeRun(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0, "")
+	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestCloseBeforeRun(t *testing.T) {
 }
 
 func TestCloseWhileServing(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0, "")
+	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,13 +177,13 @@ func TestCloseWhileServing(t *testing.T) {
 }
 
 func TestListenPortInUse(t *testing.T) {
-	srv, err := Listen(runner.Target{Command: "example"}, 0, "")
+	srv, err := Listen(runner.Target{Command: "example"}, 0, "", "/exec")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer srv.Close()
 	port := srv.listener.Addr().(*net.TCPAddr).Port
-	other, err := Listen(runner.Target{Command: "example"}, port, "")
+	other, err := Listen(runner.Target{Command: "example"}, port, "", "/exec")
 	if err == nil {
 		other.Close()
 		t.Fatal("expected an error for a port already in use")
@@ -194,7 +194,7 @@ func TestListenFixedToken(t *testing.T) {
 	for _, token := range []string{"Abcdef01234567-_", strings.Repeat("a", 17)} {
 		t.Run(token, func(t *testing.T) {
 			for range 2 {
-				srv, err := Listen(runner.Target{Command: "example"}, 0, token)
+				srv, err := Listen(runner.Target{Command: "example"}, 0, token, "/exec")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -218,7 +218,7 @@ func TestListenInvalidToken(t *testing.T) {
 		strings.Repeat("a", 15) + "あ",
 	} {
 		t.Run(token, func(t *testing.T) {
-			srv, err := Listen(runner.Target{Command: "example"}, 0, token)
+			srv, err := Listen(runner.Target{Command: "example"}, 0, token, "/exec")
 			if srv != nil {
 				srv.Close()
 				t.Fatal("invalid token started a server")
@@ -228,6 +228,18 @@ func TestListenInvalidToken(t *testing.T) {
 			}
 			if strings.Contains(err.Error(), token) {
 				t.Fatal("error contains the supplied token")
+			}
+		})
+	}
+}
+
+func TestInvalidExecPath(t *testing.T) {
+	for _, path := range []string{"", "resize", "/", "/info", "/health", "/resize/", "/a//b", "/a/../b", "/resize?x=1", "/resize#part", "/{name}", "/a%2Fb", "/a b", "/a\\b", "/a\n"} {
+		t.Run(path, func(t *testing.T) {
+			srv, err := Listen(runner.Target{Command: "example"}, 0, "", path)
+			if err == nil {
+				srv.Close()
+				t.Fatal("expected an error for an invalid path")
 			}
 		})
 	}

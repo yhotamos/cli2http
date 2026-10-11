@@ -21,6 +21,8 @@ cd images
 cli2http magick
 ```
 
+`--path /resize` で実行 API を `POST /resize` に変更できます（既定は `/exec`）。`/info`・`/health` は変更されません。
+
 ポートを固定する場合は `cli2http --port 8080 magick` を使います。未指定または `--port 0` は自動割り当てです。
 
 `--token <Token>` で固定 Token を指定できます。16文字以上の半角英数字・`-`・`_` が使用でき、同じ値を指定すれば再起動後も使えます。未指定なら起動ごとに自動生成します。
