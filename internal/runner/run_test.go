@@ -28,6 +28,14 @@ func TestRunProcess(t *testing.T) {
 	}
 	if len(args) > 0 {
 		switch args[0] {
+		case "read":
+			contents, err := os.ReadFile(args[1])
+			if err != nil {
+				fmt.Fprint(os.Stderr, err)
+				os.Exit(1)
+			}
+			fmt.Fprint(os.Stdout, string(contents))
+			os.Exit(0)
 		case "output":
 			stream := os.Stdout
 			if args[1] == "stderr" {
@@ -264,6 +272,48 @@ func TestRunFixedArgs(t *testing.T) {
 			}
 			if result.ExitCode != 0 || result.Stdout != test.stdout || result.Stderr != "stderr" {
 				t.Fatalf("unexpected result: %+v", result)
+			}
+		})
+	}
+}
+
+func TestRunDirectory(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLI2HTTP_RUNNER_PROCESS", "1")
+	base := t.TempDir()
+	directory := filepath.Join(base, "with space")
+	if err := os.Mkdir(directory, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for path, contents := range map[string]string{base: "inherited", directory: "specified"} {
+		if err := os.WriteFile(filepath.Join(path, "input.txt"), []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(base)
+	for _, test := range []struct {
+		directory string
+		want      string
+	}{
+		{"", "inherited"},
+		{directory, "specified"},
+	} {
+		t.Run(test.want, func(t *testing.T) {
+			target := Target{
+				Executable: executable,
+				Dir:        test.directory,
+				FixedArgs:  []string{"-test.run=^TestRunProcess$", "--", "read"},
+			}
+			result, err := target.Run(context.Background(), []string{"input.txt"})
+			if err != nil || result.ExitCode != 0 || result.Stdout != test.want {
+				t.Fatalf("result=%+v error=%v", result, err)
+			}
+			current, err := os.Getwd()
+			if err != nil || current != base {
+				t.Fatalf("parent directory=%q error=%v, want %q", current, err, base)
 			}
 		})
 	}

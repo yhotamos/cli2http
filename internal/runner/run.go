@@ -24,6 +24,7 @@ func (t Target) Run(ctx context.Context, args []string) (Result, error) {
 	commandArgs = append(commandArgs, t.FixedArgs...)
 	commandArgs = append(commandArgs, args...)
 	cmd := exec.CommandContext(executionCtx, t.Executable, commandArgs...)
+	cmd.Dir = t.Dir
 	cmd.WaitDelay = time.Second
 	stdout := outputBuffer{cancel: cancel}
 	stderr := outputBuffer{cancel: cancel}
