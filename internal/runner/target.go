@@ -31,6 +31,7 @@ type Target struct {
 	Command    string
 	Executable string
 	FixedArgs  []string
+	Dir        string
 }
 
 // Resolve finds a command through PATH or an explicitly supplied path and rejects shells and cli2http itself.

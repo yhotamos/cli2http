@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 
 	"github.com/yhotamos/cli2http/internal/server"
@@ -26,6 +27,7 @@ func newRootCommand() *cobra.Command {
 		Version:               buildVersion(),
 		RunE:                  runRoot,
 	}
+	command.Flags().String("dir", ".", "Working directory for all published commands")
 	command.Flags().Duration("timeout", 0, "Command execution timeout (e.g. 30s or 2m; 0 disables the limit)")
 	command.Flags().String("path", "/exec", "Publish a command string at this path (repeatable)")
 	command.Flags().Int("port", 0, "Port to listen on (0 selects an available port)")
@@ -52,9 +54,20 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		_, err := fmt.Fprintf(cmd.OutOrStdout(), "%s version %s\n", cmd.Name(), cmd.Version)
 		return err
 	}
+	directory, err := cmd.Flags().GetString("dir")
+	if err != nil {
+		return err
+	}
+	directory, err = resolveDirectory(directory)
+	if err != nil {
+		return err
+	}
 	endpoints, err := parseEndpoints(args)
 	if err != nil {
 		return err
+	}
+	for i := range endpoints {
+		endpoints[i].Target.Dir = directory
 	}
 	port, err := cmd.Flags().GetInt("port")
 	if err != nil {
@@ -85,6 +98,24 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		}
 	}
 	return srv.Run(cmd.Context(), cmd.OutOrStdout())
+}
+
+func resolveDirectory(directory string) (string, error) {
+	if directory == "" {
+		return "", fmt.Errorf("invalid directory: must not be empty")
+	}
+	absolute, err := filepath.Abs(directory)
+	if err != nil {
+		return "", fmt.Errorf("invalid directory %q: %w", directory, err)
+	}
+	info, err := os.Stat(absolute)
+	if err != nil {
+		return "", fmt.Errorf("invalid directory %q: %w", directory, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("invalid directory %q: not a directory", directory)
+	}
+	return absolute, nil
 }
 
 func buildVersion() string {

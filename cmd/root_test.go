@@ -346,3 +346,62 @@ func TestAllTargetsResolvedBeforeStartup(t *testing.T) {
 		t.Fatalf("unexpected startup output: %q", output.String())
 	}
 }
+
+func TestDirectoryOption(t *testing.T) {
+	base := t.TempDir()
+	directory := filepath.Join(base, "with space")
+	if err := os.Mkdir(directory, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(base)
+	for _, test := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"default", []string{"tool"}, base},
+		{"relative", []string{"--dir", "with space", "tool"}, directory},
+		{"absolute", []string{"--dir=" + directory, "tool"}, directory},
+		{"before path", []string{"--dir", "with space", "--path", "/image", "tool"}, directory},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := newRootCommand()
+			if _, err := parseOptions(command, test.args); err != nil {
+				t.Fatal(err)
+			}
+			value, err := command.Flags().GetString("dir")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := resolveDirectory(value)
+			if err != nil || got != test.want {
+				t.Fatalf("directory=%q error=%v, want %q", got, err, test.want)
+			}
+		})
+	}
+}
+
+func TestInvalidDirectoryBeforeStartup(t *testing.T) {
+	executable := writeTargetFixture(t)
+	for _, args := range [][]string{
+		{"--dir"},
+		{"--dir=", executable},
+		{"--dir", filepath.Join(t.TempDir(), "missing"), executable},
+		{"--dir", executable, executable},
+		{executable, "--dir", t.TempDir()},
+	} {
+		t.Run(strings.Join(args, ","), func(t *testing.T) {
+			command := newRootCommand()
+			var output bytes.Buffer
+			command.SetOut(&output)
+			command.SetErr(&bytes.Buffer{})
+			command.SetArgs(args)
+			if err := command.Execute(); err == nil {
+				t.Fatal("expected directory option error")
+			}
+			if output.Len() != 0 {
+				t.Fatalf("unexpected startup output: %q", output.String())
+			}
+		})
+	}
+}
