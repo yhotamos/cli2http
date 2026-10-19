@@ -12,10 +12,16 @@ cli2http "\"C:\Program Files\ImageMagick\magick.exe\" -resize 800x600"
 
 ### Windows PowerShell 5.1
 
-内側の二重引用符は `\"` と書きます。
+固定引数を付ける場合は、内側の二重引用符を `\"` と書きます。
 
 ```powershell
 cli2http '\"C:\Program Files\ImageMagick\magick.exe\" -resize 800x600'
+```
+
+固定引数なしで空白を含む実行パスを指定する場合は、PowerShell の `--%` で解析を止めます。
+
+```powershell
+cli2http --% "\"C:\Program Files\ImageMagick\magick.exe\""
 ```
 
 ### PowerShell 7.3 以降（pwsh）
