@@ -1,10 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -13,6 +15,8 @@ import (
 
 	"github.com/yhotamos/cli2http/internal/runner"
 )
+
+const maxRequestBodyBytes = 1 << 20
 
 type execResponse struct {
 	ExitCode int    `json:"exitCode"`
@@ -53,8 +57,13 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, target runne
 	var request struct {
 		Args []*string `json:"args"`
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	decoder := json.NewDecoder(r.Body)
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeRequestError(w, err, "failed to read request body")
+		return
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil || request.Args == nil {
 		writeError(w, http.StatusBadRequest, "expected a JSON object with args as a string array")
@@ -121,6 +130,15 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, struct {
 		Status string `json:"status"`
 	}{Status: "ok"})
+}
+
+func writeRequestError(w http.ResponseWriter, err error, fallbackMessage string) {
+	var limitError *http.MaxBytesError
+	if errors.As(err, &limitError) {
+		writeError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("request body exceeds the %g MiB limit", float64(limitError.Limit)/(1<<20)))
+		return
+	}
+	writeError(w, http.StatusBadRequest, fallbackMessage)
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

@@ -179,7 +179,7 @@ func TestInvalidExecRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer srv.Close()
-	for _, body := range []string{"", "null", "[]", "{}", `{"args":null}`, `{"args":"wrong"}`, `{"args":[1]}`, `{"args":[null]}`, `{"args":[]`, `{"args":[]} {}`, `{"args":[],"command":"other"}`, strings.Repeat(" ", (1<<20)+1)} {
+	for _, body := range []string{"", "null", "[]", "{}", `{"args":null}`, `{"args":"wrong"}`, `{"args":[1]}`, `{"args":[null]}`, `{"args":[]`, `{"args":[]} {}`, `{"args":[],"command":"other"}`} {
 		response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), body)
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("invalid JSON: status %d", response.Code)
@@ -189,6 +189,27 @@ func TestInvalidExecRequest(t *testing.T) {
 		response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), body)
 		if response.Code != http.StatusBadRequest || response.Body.String() != "{\"error\":\"args must not contain NUL\"}\n" {
 			t.Fatalf("NUL argument: status %d body %q", response.Code, response.Body.String())
+		}
+	}
+	for _, body := range []string{
+		strings.Repeat(" ", maxRequestBodyBytes+1),
+		`{"args":["` + strings.Repeat("x", maxRequestBodyBytes) + `"]}`,
+		`{"args":[]}` + strings.Repeat(" ", maxRequestBodyBytes),
+		`{}` + strings.Repeat(" ", maxRequestBodyBytes),
+		`{"args":"bad"}` + strings.Repeat(" ", maxRequestBodyBytes),
+		`invalid JSON` + strings.Repeat(" ", maxRequestBodyBytes),
+	} {
+		response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), body)
+		if response.Code != http.StatusRequestEntityTooLarge || response.Body.String() != "{\"error\":\"request body exceeds the 1 MiB limit\"}\n" {
+			t.Fatalf("oversized body: status %d body %q", response.Code, response.Body.String())
+		}
+	}
+	for _, size := range []int{maxRequestBodyBytes - 1, maxRequestBodyBytes} {
+		body := `{"args":[]}`
+		body += strings.Repeat(" ", size-len(body))
+		response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), body)
+		if response.Code != http.StatusInternalServerError {
+			t.Fatalf("body of %d bytes should reach execution: status %d", size, response.Code)
 		}
 	}
 	for _, contentType := range []string{"", "text/plain"} {
@@ -467,5 +488,30 @@ func TestMultipleEndpoints(t *testing.T) {
 		if message := <-results; message != "" {
 			t.Error(message)
 		}
+	}
+}
+
+func TestRequestBodyLimitMessage(t *testing.T) {
+	response := httptest.NewRecorder()
+	writeRequestError(response, &http.MaxBytesError{Limit: 3 << 19}, "invalid JSON")
+	if response.Code != http.StatusRequestEntityTooLarge || response.Body.String() != "{\"error\":\"request body exceeds the 1.5 MiB limit\"}\n" {
+		t.Fatalf("limit message: status %d body %q", response.Code, response.Body.String())
+	}
+}
+
+func TestOversizedBodyWithoutContentLength(t *testing.T) {
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "missing"}}}, 0, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	request := httptest.NewRequest(http.MethodPost, "/exec", strings.NewReader(`{"args":"bad"}`+strings.Repeat(" ", maxRequestBodyBytes)))
+	request.ContentLength = -1
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+srv.Token())
+	response := httptest.NewRecorder()
+	srv.http.Handler.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge || response.Body.String() != "{\"error\":\"request body exceeds the 1 MiB limit\"}\n" {
+		t.Fatalf("unknown length: status %d body %q", response.Code, response.Body.String())
 	}
 }
