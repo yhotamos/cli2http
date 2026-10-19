@@ -195,6 +195,9 @@ func TestInvalidExecRequest(t *testing.T) {
 		strings.Repeat(" ", maxRequestBodyBytes+1),
 		`{"args":["` + strings.Repeat("x", maxRequestBodyBytes) + `"]}`,
 		`{"args":[]}` + strings.Repeat(" ", maxRequestBodyBytes),
+		`{}` + strings.Repeat(" ", maxRequestBodyBytes),
+		`{"args":"bad"}` + strings.Repeat(" ", maxRequestBodyBytes),
+		`invalid JSON` + strings.Repeat(" ", maxRequestBodyBytes),
 	} {
 		response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), body)
 		if response.Code != http.StatusRequestEntityTooLarge || response.Body.String() != "{\"error\":\"request body exceeds the 1 MiB limit\"}\n" {
@@ -493,5 +496,22 @@ func TestRequestBodyLimitMessage(t *testing.T) {
 	writeRequestError(response, &http.MaxBytesError{Limit: 3 << 19}, "invalid JSON")
 	if response.Code != http.StatusRequestEntityTooLarge || response.Body.String() != "{\"error\":\"request body exceeds the 1.5 MiB limit\"}\n" {
 		t.Fatalf("limit message: status %d body %q", response.Code, response.Body.String())
+	}
+}
+
+func TestOversizedBodyWithoutContentLength(t *testing.T) {
+	srv, err := Listen([]Endpoint{{Path: "/exec", Target: runner.Target{Command: "missing"}}}, 0, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	request := httptest.NewRequest(http.MethodPost, "/exec", strings.NewReader(`{"args":"bad"}`+strings.Repeat(" ", maxRequestBodyBytes)))
+	request.ContentLength = -1
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+srv.Token())
+	response := httptest.NewRecorder()
+	srv.http.Handler.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge || response.Body.String() != "{\"error\":\"request body exceeds the 1 MiB limit\"}\n" {
+		t.Fatalf("unknown length: status %d body %q", response.Code, response.Body.String())
 	}
 }

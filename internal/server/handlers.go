@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -57,14 +58,19 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, target runne
 		Args []*string `json:"args"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	decoder := json.NewDecoder(r.Body)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeRequestError(w, err, "failed to read request body")
+		return
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil || request.Args == nil {
-		writeRequestError(w, err, "expected a JSON object with args as a string array")
+		writeError(w, http.StatusBadRequest, "expected a JSON object with args as a string array")
 		return
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
-		writeRequestError(w, err, "expected a single JSON object")
+		writeError(w, http.StatusBadRequest, "expected a single JSON object")
 		return
 	}
 	args := make([]string, len(request.Args))
