@@ -10,7 +10,21 @@
 cli2http "\"C:\Program Files\ImageMagick\magick.exe\" -resize 800x600"
 ```
 
-### pwsh
+### Windows PowerShell 5.1
+
+固定引数を付ける場合は、内側の二重引用符を `\"` と書きます。
+
+```powershell
+cli2http '\"C:\Program Files\ImageMagick\magick.exe\" -resize 800x600'
+```
+
+固定引数なしで空白を含む実行パスを指定する場合は、PowerShell の `--%` で解析を止めます。
+
+```powershell
+cli2http --% "\"C:\Program Files\ImageMagick\magick.exe\""
+```
+
+### PowerShell 7.3 以降（pwsh）
 
 ```powershell
 cli2http '"C:\Program Files\ImageMagick\magick.exe" -resize 800x600'
@@ -26,7 +40,15 @@ cli2http '/usr/local/bin/magick -resize 800x600'
 
 ## 引数の引用符
 
-空白を含む引数は、コマンド文字列の中で二重引用符で囲みます。pwsh・bash・zsh の例：
+空白を含む引数は、コマンド文字列の中で二重引用符で囲みます。
+
+Windows PowerShell 5.1：
+
+```powershell
+cli2http 'magick \"My Pictures/input.jpg\" -resize 800x600 output.jpg'
+```
+
+pwsh 7.3 以降・bash・zsh：
 
 ```sh
 cli2http 'magick "My Pictures/input.jpg" -resize 800x600 output.jpg'
