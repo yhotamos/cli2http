@@ -145,6 +145,7 @@ func TestExecResults(t *testing.T) {
 	}{
 		{"no arguments", []string{}, 0},
 		{"success", []string{"a b", "&&", "|", ">", ";", "$HOME"}, 0},
+		{"empty, newline and literal escape", []string{"", "\n", `\u0000`}, 0},
 		{"nonzero exit", []string{"fail"}, 7},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -182,6 +183,12 @@ func TestInvalidExecRequest(t *testing.T) {
 		response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), body)
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("invalid JSON: status %d", response.Code)
+		}
+	}
+	for _, body := range []string{`{"args":["\u0000"]}`, `{"args":["input\u0000.jpg"]}`, `{"args":["valid","\u0000"]}`} {
+		response := requestAPI(srv, http.MethodPost, "/exec", srv.Token(), body)
+		if response.Code != http.StatusBadRequest || response.Body.String() != "{\"error\":\"args must not contain NUL\"}\n" {
+			t.Fatalf("NUL argument: status %d body %q", response.Code, response.Body.String())
 		}
 	}
 	for _, contentType := range []string{"", "text/plain"} {
