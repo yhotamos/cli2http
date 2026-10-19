@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/yhotamos/cli2http/internal/runner"
 )
@@ -67,6 +68,10 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request, target runne
 	for i, arg := range request.Args {
 		if arg == nil {
 			writeError(w, http.StatusBadRequest, "args must contain only strings")
+			return
+		}
+		if strings.ContainsRune(*arg, 0) {
+			writeError(w, http.StatusBadRequest, "args must not contain NUL")
 			return
 		}
 		args[i] = *arg
